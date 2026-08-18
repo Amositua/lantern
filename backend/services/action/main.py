@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from common.config import get_settings
+from common.cors import add_dashboard_cors
 from common.gcp_clients import ClientInitError, get_genai_client, get_pubsub_publisher
 from common.health import run_checks
 from common.logging_utils import get_logger
@@ -26,6 +27,7 @@ logger = get_logger("action")
 settings = get_settings()
 
 app = FastAPI(title="Lantern Action / Executor Agent")
+add_dashboard_cors(app)
 
 
 @app.exception_handler(enrollment.TrustedCircleNotVerified)

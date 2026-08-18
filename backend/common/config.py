@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     national_emergency_number: str = "112"
     crisis_hotline_number: Optional[str] = None
 
+    # The dashboard calls Memory and Action directly from the browser (no
+    # BFF layer yet -- reasonable for this scope, revisit before this ever
+    # serves real users at scale). CORS is scoped to this one origin, not "*".
+    dashboard_origin: str = "http://localhost:5173"
+
     orchestrator_url: str = "http://localhost:8080"
     perception_url: str = "http://localhost:8081"
     clarifier_url: str = "http://localhost:8082"

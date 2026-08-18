@@ -1,40 +1,151 @@
 :root {
   color-scheme: dark;
   font-family: system-ui, sans-serif;
+
+  --bg: #100d09;
+  --panel-bg: #1c1712;
+  --panel-border: #3a3226;
+  --text: #f5ede0;
+  --text-muted: #c9bba3;
+  --text-faint: #8f8470;
+  --accent: #f2a93b;
+  --accent-bright: #ffd580;
+  --good: #9bcf7a;
+  --warn: #e08a8a;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  font-size: 112.5%; /* 18px base -- large legible type throughout */
+}
+
 body {
   margin: 0;
-  background: #12100c;
-  color: #f4ede1;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.55;
 }
 
-main.lantern {
-  max-width: 60rem;
+h1,
+h2,
+h3 {
+  color: var(--text);
+}
+
+/* ---------------------------------------------------------------- focus -- */
+
+a,
+button,
+input,
+[tabindex] {
+  font: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent-bright);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--accent);
+}
+
+a:hover {
+  color: var(--accent-bright);
+}
+
+/* --------------------------------------------------------------- header -- */
+
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  max-width: 75rem;
   margin: 0 auto;
-  padding: 2rem 1.5rem 3rem;
+  padding: 2rem 1.5rem 1.5rem;
 }
 
-h1 {
-  margin-bottom: 0.25rem;
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.brand h1 {
+  margin: 0 0 0.15rem;
+  font-size: 1.75rem;
 }
 
 .lede {
-  color: #cbbfa8;
-  max-width: 38rem;
+  color: var(--text-muted);
+  max-width: 34rem;
+  margin: 0;
 }
 
+/* The one signature, bold element: Lantern's listening state. Everything
+   else in this UI stays quiet on purpose. */
+.brand-mark {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: radial-gradient(circle at 35% 30%, #4a4234, #2b2519 60%, #1a160f 100%);
+  box-shadow: none;
+  transition:
+    background 0.6s ease,
+    box-shadow 0.6s ease;
+}
+
+.brand-mark[data-status="connecting"],
+.brand-mark[data-status="reconnecting"],
+.brand-mark[data-status="connected"] {
+  background: radial-gradient(circle at 35% 30%, #ffe3a8, var(--accent) 55%, #a8641b 100%);
+  box-shadow: 0 0 1rem rgba(242, 169, 59, 0.7);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .brand-mark[data-status="connected"] {
+    animation: lantern-glow 2.4s ease-in-out infinite;
+  }
+
+  .brand-mark[data-status="connecting"],
+  .brand-mark[data-status="reconnecting"] {
+    animation: lantern-glow 1s ease-in-out infinite;
+  }
+
+  @keyframes lantern-glow {
+    0%,
+    100% {
+      box-shadow: 0 0 0.6rem rgba(242, 169, 59, 0.5);
+    }
+    50% {
+      box-shadow: 0 0 1.6rem rgba(242, 169, 59, 1);
+    }
+  }
+}
+
+.session-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+/* --------------------------------------------------------------- buttons -- */
+
 button {
-  font-size: 1.1rem;
-  padding: 0.75rem 1.5rem;
+  font-size: 1.05rem;
+  padding: 0.7rem 1.4rem;
+  min-height: 3rem;
   border-radius: 0.5rem;
-  border: 2px solid #f2a93b;
-  background: #f2a93b;
-  color: #12100c;
+  border: 2px solid var(--accent);
+  background: var(--accent);
+  color: var(--bg);
   font-weight: 600;
   cursor: pointer;
 }
@@ -44,43 +155,79 @@ button:disabled {
   cursor: not-allowed;
 }
 
-button:focus-visible {
-  outline: 3px solid #ffd580;
-  outline-offset: 2px;
+.secondary-button {
+  background: transparent;
+  color: var(--text);
+  border-color: #524a3c;
 }
 
+.secondary-button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.95rem;
+  min-height: auto;
+  padding: 0.25rem 0.4rem;
+  text-decoration: underline;
+}
+
+.link-button:hover {
+  color: var(--accent-bright);
+}
+
+.reorder-button {
+  font-size: 0.95rem;
+  padding: 0.5rem 1rem;
+  min-height: 2.5rem;
+  flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------- status -- */
+
 .status {
-  margin-top: 0.75rem;
+  margin: 0;
   font-size: 1rem;
 }
 
 .status[data-status="connected"] {
-  color: #8fd18f;
+  color: var(--good);
 }
 
 .status[data-status="closed"] {
-  color: #e08a8a;
+  color: var(--warn);
 }
 
-.panels {
+/* -------------------------------------------------------------- dashboard -- */
+
+.dashboard {
   display: grid;
   grid-template-columns: 1fr;
   gap: 1.5rem;
-  margin-top: 2rem;
+  max-width: 75rem;
+  margin: 0 auto;
+  padding: 0 1.5rem 3rem;
 }
 
 @media (min-width: 48rem) {
-  .panels {
+  .dashboard {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .proposed-action-panel {
+    grid-column: 1 / -1;
   }
 }
 
 .panel {
-  border: 1px solid #3a3226;
+  border: 1px solid var(--panel-border);
   border-radius: 0.75rem;
-  padding: 1rem;
-  background: #1a1610;
-  min-height: 20rem;
+  padding: 1.25rem;
+  background: var(--panel-bg);
+  min-height: 12rem;
   display: flex;
   flex-direction: column;
 }
@@ -90,8 +237,21 @@ button:focus-visible {
   font-size: 1rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #cbbfa8;
+  color: var(--text-muted);
 }
+
+.panel-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.empty-state {
+  color: var(--text-faint);
+}
+
+/* ----------------------------------------------------------------- camera -- */
 
 .camera-panel video {
   width: 100%;
@@ -100,6 +260,12 @@ button:focus-visible {
   flex: 1;
   min-height: 16rem;
   object-fit: cover;
+}
+
+/* -------------------------------------------------------------- transcript -- */
+
+.transcript-panel {
+  min-height: 20rem;
 }
 
 .transcript-panel ul {
@@ -127,5 +293,164 @@ button:focus-visible {
 .line-lantern {
   align-self: flex-start;
   background: #3a2c14;
-  border: 1px solid #f2a93b;
+  border: 1px solid var(--accent);
+}
+
+/* --------------------------------------------------------- proposed action -- */
+
+.proposed-action-panel {
+  border-color: #5a4726;
+}
+
+.proposal-readback {
+  font-size: 1.25rem;
+  line-height: 1.5;
+  margin: 0 0 0.5rem;
+}
+
+.proposal-note {
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.proposal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  margin-top: 1rem;
+}
+
+.field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+}
+
+.field-input {
+  font-size: 1.1rem;
+  padding: 0.6rem 0.75rem;
+  min-height: 2.75rem;
+  border-radius: 0.5rem;
+  border: 2px solid var(--panel-border);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.proposal-status {
+  color: var(--warn);
+  min-height: 1.5rem;
+  margin: 0.75rem 0 0;
+}
+
+.proposal-result {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin: 0 0 0.25rem;
+}
+
+.proposal-result-good {
+  color: var(--good);
+}
+
+.proposal-result-warn {
+  color: #f0c274;
+}
+
+.proposal-result-neutral {
+  color: var(--text);
+}
+
+.proposal-detail {
+  color: var(--text-muted);
+  margin: 0 0 1rem;
+}
+
+/* ------------------------------------------------------------- life graph -- */
+
+.life-graph-section {
+  margin-bottom: 1.25rem;
+}
+
+.life-graph-section:last-child {
+  margin-bottom: 0;
+}
+
+.life-graph-section h3 {
+  font-size: 0.95rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin: 0 0 0.5rem;
+}
+
+.life-graph-alert {
+  border: 2px solid var(--accent);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  background: rgba(242, 169, 59, 0.08);
+}
+
+.medication-list,
+.people-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.medication-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #2a2419;
+}
+
+.medication-item:last-child {
+  border-bottom: none;
+}
+
+/* ----------------------------------------------------------------- audit -- */
+
+.audit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  overflow-y: auto;
+  max-height: 24rem;
+}
+
+.audit-entry {
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+  background: var(--bg);
+  border-left: 3px solid #524a3c;
+}
+
+.audit-good {
+  border-left-color: var(--good);
+}
+
+.audit-warn {
+  border-left-color: var(--warn);
+}
+
+.audit-summary {
+  margin: 0;
+  font-weight: 600;
+}
+
+.audit-meta {
+  margin: 0.15rem 0 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
 }

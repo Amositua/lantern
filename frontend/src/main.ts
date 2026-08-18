@@ -1,33 +1,43 @@
 import "./style.css";
+import { Medication, describeFailure, proposeReorder } from "./api";
 import { AudioPlaybackQueue } from "./audio-playback";
 import { startCamera, startFrameCapture, startMicCapture } from "./media";
+import { AuditPanel } from "./panels/audit-panel";
+import { LifeGraphPanel } from "./panels/life-graph-panel";
+import { ProposedActionPanel } from "./panels/proposed-action-panel";
 import { ConnectionStatus, LiveSessionClient, TranscriptSpeaker } from "./session";
 
 const DEFAULT_GATEWAY_WS_URL = "ws://localhost:8086/ws/session";
 const GATEWAY_WS_URL = (import.meta.env.VITE_LIVE_SESSION_GATEWAY_WS_URL as string | undefined) ?? DEFAULT_GATEWAY_WS_URL;
+const USER_ID = (import.meta.env.VITE_DEMO_USER_ID as string | undefined) ?? "demo-user";
 
 const STATUS_LABELS: Record<ConnectionStatus, string> = {
   connecting: "Connecting…",
   connected: "Listening",
   reconnecting: "Reconnected — picking the conversation back up…",
-  closed: "Disconnected",
+  closed: "Not connected",
 };
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
 if (app) {
   app.innerHTML = `
-    <main class="lantern">
-      <h1>Lantern</h1>
-      <p class="lede">
-        Point the camera, say what you need. This is the perception session only —
-        Lantern isn't taking any action yet.
-      </p>
+    <div class="app-shell">
+      <header class="app-header">
+        <div class="brand">
+          <span class="brand-mark" id="brand-mark" aria-hidden="true"></span>
+          <div class="brand-text">
+            <h1>Lantern</h1>
+            <p class="lede">Point the camera, say what you need. Lantern proposes, you confirm — nothing happens without your say-so.</p>
+          </div>
+        </div>
+        <div class="session-controls">
+          <button id="start-button" type="button">Start session</button>
+          <p id="status" class="status" aria-live="polite">Not connected</p>
+        </div>
+      </header>
 
-      <button id="start-button" type="button">Start session</button>
-      <p id="status" class="status" aria-live="polite">Not connected</p>
-
-      <div class="panels">
+      <main class="dashboard">
         <section aria-label="Camera feed" class="panel camera-panel">
           <h2>Camera</h2>
           <video id="camera" autoplay playsinline muted></video>
@@ -37,8 +47,29 @@ if (app) {
           <h2>Transcript</h2>
           <ul id="transcript" aria-live="polite"></ul>
         </section>
-      </div>
-    </main>
+
+        <section aria-label="Proposed action" class="panel proposed-action-panel" aria-live="polite">
+          <h2>Proposed action</h2>
+          <div id="proposed-action-body"></div>
+        </section>
+
+        <section aria-label="What Lantern believes about you" class="panel life-graph-panel">
+          <div class="panel-heading-row">
+            <h2>What Lantern believes about you</h2>
+            <button id="life-graph-refresh" class="link-button" type="button">Refresh</button>
+          </div>
+          <div id="life-graph-body"><p class="empty-state">Loading…</p></div>
+        </section>
+
+        <section aria-label="Activity log" class="panel audit-panel" aria-live="polite">
+          <div class="panel-heading-row">
+            <h2>Activity log</h2>
+            <button id="audit-refresh" class="link-button" type="button">Refresh</button>
+          </div>
+          <div id="audit-body"><p class="empty-state">Loading…</p></div>
+        </section>
+      </main>
+    </div>
   `;
 
   wireUp();
@@ -47,8 +78,55 @@ if (app) {
 function wireUp(): void {
   const startButton = document.querySelector<HTMLButtonElement>("#start-button")!;
   const statusEl = document.querySelector<HTMLParagraphElement>("#status")!;
+  const brandMark = document.querySelector<HTMLSpanElement>("#brand-mark")!;
   const videoEl = document.querySelector<HTMLVideoElement>("#camera")!;
   const transcriptEl = document.querySelector<HTMLUListElement>("#transcript")!;
+  const proposedActionBody = document.querySelector<HTMLDivElement>("#proposed-action-body")!;
+  const lifeGraphBody = document.querySelector<HTMLDivElement>("#life-graph-body")!;
+  const auditBody = document.querySelector<HTMLDivElement>("#audit-body")!;
+  const lifeGraphRefreshButton = document.querySelector<HTMLButtonElement>("#life-graph-refresh")!;
+  const auditRefreshButton = document.querySelector<HTMLButtonElement>("#audit-refresh")!;
+
+  const refreshBelief = () => {
+    void lifeGraphPanel.refresh();
+    void auditPanel.refresh();
+  };
+
+  const proposedActionPanel = new ProposedActionPanel(proposedActionBody, USER_ID, refreshBelief);
+  const auditPanel = new AuditPanel(auditBody, USER_ID);
+  const lifeGraphPanel = new LifeGraphPanel(lifeGraphBody, USER_ID, (medication: Medication) => {
+    void requestReorder(medication);
+  });
+
+  const requestReorder = async (medication: Medication): Promise<void> => {
+    proposedActionBody.replaceChildren();
+    const loading = document.createElement("p");
+    loading.className = "empty-state";
+    loading.textContent = `Checking your ${medication.name}…`;
+    proposedActionBody.appendChild(loading);
+
+    try {
+      const proposal = await proposeReorder(USER_ID, medication.id);
+      proposedActionPanel.showProposal(proposal);
+      proposedActionBody.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (error) {
+      const text = describeFailure(
+        "propose reorder failed",
+        error,
+        `Lantern couldn't check on ${medication.name} right now. Try again in a moment.`,
+      );
+      const message = document.createElement("p");
+      message.className = "empty-state";
+      message.textContent = text;
+      proposedActionBody.replaceChildren(message);
+    }
+  };
+
+  lifeGraphRefreshButton.addEventListener("click", () => void lifeGraphPanel.refresh());
+  auditRefreshButton.addEventListener("click", () => void auditPanel.refresh());
+
+  void lifeGraphPanel.refresh();
+  void auditPanel.refresh();
 
   let stopMic: (() => void) | null = null;
   let stopFrames: (() => void) | null = null;
@@ -59,6 +137,7 @@ function wireUp(): void {
   const setStatus = (status: ConnectionStatus) => {
     statusEl.textContent = STATUS_LABELS[status];
     statusEl.dataset.status = status;
+    brandMark.dataset.status = status;
   };
 
   const closeCurrentLine = () => {
@@ -108,7 +187,7 @@ function wireUp(): void {
         client.connect();
         startButton.textContent = "Session running";
       } catch (error) {
-        statusEl.textContent = `Could not start: ${(error as Error).message}`;
+        statusEl.textContent = `Lantern needs camera and microphone access to start: ${(error as Error).message}`;
         startButton.disabled = false;
       }
     })();

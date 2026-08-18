@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from common.config import get_settings
+from common.cors import add_dashboard_cors
 from common.gcp_clients import ClientInitError
 from common.health import run_checks
 from common.logging_utils import get_logger
@@ -28,6 +29,7 @@ logger = get_logger("memory")
 settings = get_settings()
 
 app = FastAPI(title="Lantern Memory Agent")
+add_dashboard_cors(app)
 
 
 @app.exception_handler(lg.TrustViolation)

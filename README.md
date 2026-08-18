@@ -264,14 +264,57 @@ inside it. The frontend mirrors this in `frontend/src/session.ts`.
 16kHz PCM16 via an AudioWorklet (`public/pcm-worklet.js`); `audio-playback.ts` schedules
 Lantern's spoken responses back-to-back; `session.ts` is the WebSocket client, reconnecting with
 backoff and carrying the `session_id` across reconnects to match the gateway's contract.
-`main.ts` wires these into the camera-feed and transcript panels — the rest of the dashboard
-(proposed-action, Life Graph, audit panels) lands with the full dashboard build.
+`main.ts` wires these into the camera-feed and transcript panels, the first two of the
+dashboard's five.
 
 Camera capture, mic capture/playback, and the actual Gemini Live exchange all require a real
-browser and (for the Gemini side) a configured Vertex AI project — neither is available in this
-environment, so those paths are verified structurally (clean TypeScript build, dev server serves
-every module without error) rather than by hand in a browser. Worth a real check once both are
-available.
+device and (for the Gemini side) a configured Vertex AI project — neither is available in this
+environment. Everything else about the dashboard, including this pair of panels' layout and
+accessibility, is verified with a real headless browser (below).
+
+### The Dashboard
+
+Five panels, all first-class UI: camera, transcript, **proposed action**, **what Lantern
+believes about you** (Life Graph), and the **activity log**. The last three call the backend
+directly from the browser — Memory Agent for reads, Action Agent for the reorder gate — since no
+BFF layer exists yet; `common/cors.py` scopes both services' CORS to exactly `DASHBOARD_ORIGIN`,
+not `*`.
+
+- **Life Graph panel** (`panels/life-graph-panel.ts`) renders `GET /life-graph` — medications
+  (each with a **Reorder** button), people, a redacted payment summary, and any pending
+  resolution event. Choosing **Reorder** is the dashboard's entry point into the confirmation
+  gate: it calls `propose_reorder` and hands the result to the Proposed Action panel.
+- **Proposed Action panel** (`panels/proposed-action-panel.ts`) is the propose→confirm→execute
+  gate made visible. It reads back identity, amount, payee, and card in plain language, and the
+  form it shows adapts to `required_confirmation` — a plain **Reorder**/**Not now** pair for
+  `simple`, a one-time-code field for `step_up`, an approver-name field for `trusted_circle`.
+  Copy stays consistent through the flow the way `ARCHITECTURE.md` asks: **Reorder** →
+  **Reordering…** → **Reordered**.
+- **Activity log panel** (`panels/audit-panel.ts`) renders `GET /audit`.
+
+Confirming or declining refreshes both the Life Graph and activity log panels, so the acceptance
+bar ("visibly update as actions happen") is a real callback (`onSettled` in `main.ts`), not a
+manual refresh someone has to remember to click — though a **Refresh** link is there too.
+
+Design: a deliberate "lantern" identity, not the generic AI-app look — a warm dark palette
+(`--bg`/`--panel-bg`/`--accent` in `style.css`) instead of cream-serif or acid-on-black. One
+signature bold element per the brief: `.brand-mark`, a small glowing orb next to the wordmark
+that pulses while the live session is listening and sits dim otherwise — everywhere else stays
+quiet by comparison. Accessibility is load-bearing, not a checkbox: `html` sets an 18px base
+size, every interactive element gets a 3px high-contrast focus ring via `:focus-visible`, hit
+targets run comfortably past the 44px minimum, and the pulse animation only applies inside
+`@media (prefers-reduced-motion: no-preference)` — reduced-motion keeps the glow (still says
+"listening") but drops the animation. Every raw backend error is caught and replaced with a
+specific, calm message in the interface's own voice (`describeFailure` in `api.ts` logs the real
+detail to the console instead of showing it) — a fix that came out of actually testing this: the
+first pass leaked `"GCP_PROJECT_ID is not set; cannot init the Firestore client"` straight into
+the Life Graph panel.
+
+All of this — the five panels rendering, focus-visible outlines, computed font size, hit-target
+dimensions, the reduced-motion behavior, and the copy fix above — was checked with a real
+headless Chromium session (Playwright) driving the actual dev server against the actual backend,
+not just a type-check. What that session can't exercise here: an actual camera/microphone, and a
+real Gemini Live connection (no Vertex AI project configured in this environment).
 
 ## Stack
 
@@ -340,7 +383,13 @@ variable a service reads is defined in `backend/common/config.py`:
 | `PAYSTACK_SECRET_KEY` | Paystack secret key — server-side only, never sent to the client |
 | `NATIONAL_EMERGENCY_NUMBER` | Safety Router's handoff fallback, defaults to Nigeria's 112 |
 | `CRISIS_HOTLINE_NUMBER` | mental-health crisis line for Safety Router's handoff — unset by default, must be a verified real number before deploying |
+| `DASHBOARD_ORIGIN` | the one origin Memory and Action's CORS allows the browser to call from |
 | `ORCHESTRATOR_URL`, `PERCEPTION_URL`, `CLARIFIER_URL`, `ACTION_URL`, `SAFETY_ROUTER_URL`, `MEMORY_URL`, `LIVE_SESSION_GATEWAY_URL` | how services find each other |
+
+The dashboard has its own env file, `frontend/.env.example` — `VITE_LIVE_SESSION_GATEWAY_WS_URL`,
+`VITE_MEMORY_URL`, `VITE_ACTION_URL` for where to reach the backend, and `VITE_DEMO_USER_ID` for
+which Life Graph user it reads and writes (there's no auth yet, so this stands in for "who's
+using the app").
 
 All secrets are read from the server-side environment (Secret Manager in Cloud Run). None of
 them are ever sent to or read by the frontend.
