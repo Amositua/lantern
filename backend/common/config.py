@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     pharmacy_aggregator_api_key: Optional[str] = None
     paystack_secret_key: Optional[str] = None
 
+    # Nigeria's national emergency number -- stable and well-established,
+    # safe to default. crisis_hotline_number is deliberately unset by
+    # default: a wrong crisis-line number is actively harmful, so a real
+    # deployment must configure a verified, current, local one rather than
+    # trusting a hardcoded guess.
+    national_emergency_number: str = "112"
+    crisis_hotline_number: Optional[str] = None
+
     orchestrator_url: str = "http://localhost:8080"
     perception_url: str = "http://localhost:8081"
     clarifier_url: str = "http://localhost:8082"

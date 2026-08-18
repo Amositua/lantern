@@ -180,6 +180,31 @@ Every question is phrased by Gemini Pro (`gemini_phrasing.py`), adapted to the u
 behavior, so a Gemini failure falls back to the plain deterministic template rather than blocking
 the question from being asked at all.
 
+### Safety Router
+
+`backend/services/safety_router` runs on every turn and can veto anything in progress. Two
+triggers, both checked in `POST /safety/check`: a crisis phrase (`crisis_detection.py`) or
+confidence below a threshold. Either one halts and returns a handoff contact — a recorded
+`emergency`-role person from the user's own `people` list if there is one; failing that, a
+detected mental-health crisis uses `CRISIS_HOTLINE_NUMBER` if it's configured, and everything
+else falls back to the national emergency number. `CRISIS_HOTLINE_NUMBER` stays unset by default
+on purpose — a wrong crisis number is actively harmful, so this repo doesn't guess one; a real
+deployment has to configure a verified, current, local number itself.
+
+Crisis detection is deliberately a fixed phrase list, not a Gemini call. Every other Gemini-backed
+piece in this codebase degrades gracefully to a template on failure; this one has to be
+guaranteed available even if Vertex AI is unreachable, and a fixed, auditable list makes its
+false-negative behavior something you can actually reason about and test — a probabilistic
+classifier's failure modes are much harder to pin down for the one gate where missing something
+matters most. `health/deep` reflects this: no GCP client checks, because it doesn't have one.
+
+The veto itself needs no cooperation from Action: passing `case_id` moves that case straight out
+of `proposed` state, and Action's own confirm-time check (a case has to still be `proposed` to
+execute) refuses it from there — one state machine, enforced the same way no matter who's asking.
+`test_safety_router.py` proves this isn't just an assertion about Safety Router's own return
+value: it proposes a real reorder, vetoes it, and confirms `reorder.resolve_reorder` genuinely
+raises rather than executing.
+
 ### Live Session Gateway
 
 `backend/services/live_session_gateway` holds the open Gemini Live connection and relays it to
@@ -282,6 +307,8 @@ variable a service reads is defined in `backend/common/config.py`:
 | `PUBSUB_TOPIC_PREFIX` | prefix applied to every Pub/Sub topic Lantern creates |
 | `PHARMACY_AGGREGATOR_BASE_URL`, `PHARMACY_AGGREGATOR_API_KEY` | pharmacy rail credentials |
 | `PAYSTACK_SECRET_KEY` | Paystack secret key — server-side only, never sent to the client |
+| `NATIONAL_EMERGENCY_NUMBER` | Safety Router's handoff fallback, defaults to Nigeria's 112 |
+| `CRISIS_HOTLINE_NUMBER` | mental-health crisis line for Safety Router's handoff — unset by default, must be a verified real number before deploying |
 | `ORCHESTRATOR_URL`, `PERCEPTION_URL`, `CLARIFIER_URL`, `ACTION_URL`, `SAFETY_ROUTER_URL`, `MEMORY_URL`, `LIVE_SESSION_GATEWAY_URL` | how services find each other |
 
 All secrets are read from the server-side environment (Secret Manager in Cloud Run). None of
