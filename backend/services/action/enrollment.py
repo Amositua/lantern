@@ -3,7 +3,8 @@ for a med or a payment method. Every path here attaches a verification
 block before calling the Memory Agent, so none of it is reachable from a
 bare voice turn.
 """
-from . import memory_client
+from common import memory_client
+
 from .gemini_extraction import extract_prescription_fields
 from .paystack_client import PaystackError, get_paystack_client
 from .pharmacy_client import PharmacyError, get_pharmacy_client

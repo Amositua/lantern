@@ -5,9 +5,9 @@ from common.config import get_settings
 from common.gcp_clients import ClientInitError, get_genai_client, get_pubsub_publisher
 from common.health import run_checks
 from common.logging_utils import get_logger
+from common.memory_client import MemoryAgentError
 
 from . import enrollment
-from .memory_client import MemoryAgentError
 from .schemas import (
     MedicationExtractRequest,
     MedicationExtractResponse,

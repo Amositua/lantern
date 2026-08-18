@@ -1,13 +1,13 @@
-"""HTTP client for the Memory Agent. Action has no Firestore access of its
-own — every write goes through here."""
+"""HTTP client for the Memory Agent — no service touches Firestore
+directly, every read/write goes through here."""
 from typing import Any, Dict, List, Optional
 
 import httpx
 
-from common.config import get_settings
-from common.logging_utils import get_logger
+from .config import get_settings
+from .logging_utils import get_logger
 
-logger = get_logger("action.memory_client")
+logger = get_logger("memory_client")
 
 
 class MemoryAgentError(RuntimeError):
@@ -41,6 +41,10 @@ def create_document(user_id: str, payload: Dict[str, Any]) -> dict:
 
 def create_medication(user_id: str, payload: Dict[str, Any]) -> dict:
     return _request("POST", f"/users/{user_id}/medications", json=payload)
+
+
+def list_medications(user_id: str) -> List[dict]:
+    return _request("GET", f"/users/{user_id}/medications")
 
 
 def write_payment(user_id: str, payload: Dict[str, Any]) -> dict:

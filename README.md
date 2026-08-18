@@ -97,8 +97,32 @@ payment's token. Nothing here is reachable from a bare voice turn.
   incomplete transaction never reaches the Memory Agent, and the request schema's `extra="forbid"`
   rejects any attempt to attach raw card fields at the API boundary.
 
-Action never touches Firestore either — `memory_client.py` is a small HTTP client that calls the
-Memory Agent's API, the same as any other service would.
+Action never touches Firestore either — `common/memory_client.py` is a small HTTP client that
+calls the Memory Agent's API, the same as any other service would.
+
+### Perception Agent
+
+`backend/services/perception` implements the one rule that governs the whole medication flow:
+vision matches, it never identifies. `POST /perceive` never lets Gemini return a free-standing
+drug identity — it hands Gemini Flash the caller's actual known medications (fetched from the
+Memory Agent) and asks it to pick among *those*, nothing else. Whatever comes back is
+cross-checked against that same list before it's trusted; a `med_id` Gemini invents that isn't on
+the user's Life Graph gets silently dropped in `perception.py`, not treated as a match.
+
+The result always lands in one of three branches, matching the trust hierarchy in
+`ARCHITECTURE.md` §5b:
+
+- **`confirm_identity`** — exactly one plausible candidate at high confidence (≥ 0.75). Returns
+  the matched medication so the caller can read its identity back to the user rather than trusting
+  the image itself.
+- **`ask_clarifying_question`** — two or more plausible candidates (a look-alike situation).
+  Returns every candidate so a follow-up question can distinguish between them — never a guess.
+- **`fallback_to_memory`** — nothing legible, nothing on record, or a single candidate that isn't
+  confident enough. Falls back to refill timing and a spoken check, not the picture.
+
+`backend/tests/test_perception.py` exercises all three branches plus the case that matters most:
+a hallucinated `med_id` outside the user's known set never reaches `confirm_identity`, no matter
+how confident Gemini claims to be about it.
 
 ### Live Session Gateway
 
@@ -144,7 +168,7 @@ available.
 | Gemini 3.5 (Flash + Pro) via Vertex AI | `backend/common/gcp_clients.py:get_genai_client`, used by perception, clarifier, safety_router, live_session_gateway, action |
 | Gemini Live API | `services/live_session_gateway/gemini_live.py`, relayed to the dashboard over `/ws/session` |
 | Google ADK | `backend/services/orchestrator/adk_agent.py` |
-| GenAI SDK | structured output — `services/action/gemini_extraction.py` extracts prescription fields into a Pydantic schema at enrollment |
+| GenAI SDK | structured output — `services/action/gemini_extraction.py` extracts prescription fields at enrollment, `services/perception/gemini_match.py` returns typed match candidates |
 | Firestore | Life Graph + per-user case state (`services/memory/clients.py:get_firestore_client`, memory-only) |
 | Cloud SQL + pgvector | RAG over user documents (`services/memory/clients.py:get_cloud_sql_engine`, memory-only) |
 | Cloud Run | every service below, scale-to-zero |
