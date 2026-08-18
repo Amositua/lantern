@@ -71,14 +71,43 @@ cd backend && pytest
 profile, medications, people, a redacted payment summary (token presence + caps, never the raw
 token), preferences, pending resolution events, and recent audit entries.
 
+### Trusted enrollment (Action Agent)
+
+`backend/services/action` owns the two flows that put verified truth into the Life Graph — the
+only two callers who can ever hand the Memory Agent a medication's `verification` block or a
+payment's token. Nothing here is reachable from a bare voice turn.
+
+- **Medication, by prescription.** `POST /enrollment/medications/prescription/extract` runs
+  Gemini Pro structured extraction (`gemini_extraction.py`) over a prescription image and stores
+  it as a `document` — but writes nothing to the Life Graph yet. A human reviews the extracted
+  fields (correcting anything misread) and calls `POST
+  /enrollment/medications/prescription/verify` with the confirmed fields and a verification
+  block; only that second call reaches the Memory Agent. The same endpoint accepts
+  `trusted_circle_verified`, which `enrollment.py` checks against the user's own `people` list
+  (must be recorded with role `trusted_circle` or `caregiver`) before it's accepted — a claimed
+  trusted-circle identity that isn't on record is rejected with 403, not trusted on say-so.
+- **Medication, by dispensing record.** `POST /enrollment/medications/import-dispensing-record`
+  pulls a record from the pharmacy aggregator (`pharmacy_client.py`, abstracted behind an
+  interface with a `SandboxPharmacyClient` fixture for the demo) and writes it straight through,
+  since the pharmacy's own record is already tier-2 in the trust hierarchy.
+- **Payment.** `POST /enrollment/payment` takes only a Paystack transaction `reference` — never
+  card data — verifies it server-side (`paystack_client.py`, same sandbox/live split), and if the
+  first-transaction 2FA actually completed, stores the resulting `authorization_code` alongside
+  the per-transaction cap, daily cap, and never-auto list the caller supplied. A failed or
+  incomplete transaction never reaches the Memory Agent, and the request schema's `extra="forbid"`
+  rejects any attempt to attach raw card fields at the API boundary.
+
+Action never touches Firestore either — `memory_client.py` is a small HTTP client that calls the
+Memory Agent's API, the same as any other service would.
+
 ## Stack
 
 | Requirement | Where |
 |---|---|
-| Gemini 3.5 (Flash + Pro) via Vertex AI | `backend/common/gcp_clients.py:get_genai_client`, used by perception, clarifier, safety_router, live_session_gateway |
+| Gemini 3.5 (Flash + Pro) via Vertex AI | `backend/common/gcp_clients.py:get_genai_client`, used by perception, clarifier, safety_router, live_session_gateway, action |
 | Gemini Live API | live_session_gateway (voice+video session) |
 | Google ADK | `backend/services/orchestrator/adk_agent.py` |
-| GenAI SDK | structured output for Life Graph nodes, action plans, confirmation payloads |
+| GenAI SDK | structured output — `services/action/gemini_extraction.py` extracts prescription fields into a Pydantic schema at enrollment |
 | Firestore | Life Graph + per-user case state (`services/memory/clients.py:get_firestore_client`, memory-only) |
 | Cloud SQL + pgvector | RAG over user documents (`services/memory/clients.py:get_cloud_sql_engine`, memory-only) |
 | Cloud Run | every service below, scale-to-zero |

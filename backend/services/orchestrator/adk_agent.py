@@ -1,9 +1,6 @@
-"""Root ADK agent for the orchestrator.
-
-This is the seed of the multi-agent topology: one root agent that will
-grow sub-agents for perception, clarifying, execution, and safety review
-as those services come online in later stages.
-"""
+"""Root ADK agent for the orchestrator — will grow sub-agents for
+perception, clarifying, execution, and safety review as those come
+online."""
 from google.adk.agents import Agent
 
 from common.config import get_settings
