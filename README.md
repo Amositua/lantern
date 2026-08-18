@@ -100,12 +100,49 @@ payment's token. Nothing here is reachable from a bare voice turn.
 Action never touches Firestore either — `memory_client.py` is a small HTTP client that calls the
 Memory Agent's API, the same as any other service would.
 
+### Live Session Gateway
+
+`backend/services/live_session_gateway` holds the open Gemini Live connection and relays it to
+the dashboard over a WebSocket at `/ws/session`. It only perceives and talks — no real-world
+action happens here.
+
+The Gemini Live session and the browser's WebSocket are deliberately decoupled
+(`live_session.py`): a `SessionState`'s model session and its background pump task keep running
+even while no browser is attached. A browser sends `{"session_id": null}` on first connect and
+gets one back; sending that same `session_id` on a later reconnect reattaches to the *same*
+still-open Gemini session instead of starting a fresh conversation — that's what makes a brief
+disconnect survivable. A session with no browser attached for longer than the grace period (60s)
+is swept and closed.
+
+The real Gemini connection (`gemini_live.py`) sits behind the same `LiveModelSession` interface
+pattern used for the Paystack/pharmacy clients, so `tests/test_live_session_gateway.py` can
+verify the reconnection logic — registry attach/detach/grace-period eviction, event buffering
+while detached, and the actual `/ws/session` WebSocket route end-to-end — against a fake,
+without needing a Vertex AI project.
+
+Wire protocol: browser→gateway audio is raw binary PCM16 frames (everything else, including
+video frames, is JSON); gateway→browser is always JSON, with audio and video base64-encoded
+inside it. The frontend mirrors this in `frontend/src/session.ts`.
+
+**Frontend** (`frontend/src/`): `media.ts` captures the camera and downsamples mic audio to
+16kHz PCM16 via an AudioWorklet (`public/pcm-worklet.js`); `audio-playback.ts` schedules
+Lantern's spoken responses back-to-back; `session.ts` is the WebSocket client, reconnecting with
+backoff and carrying the `session_id` across reconnects to match the gateway's contract.
+`main.ts` wires these into the camera-feed and transcript panels — the rest of the dashboard
+(proposed-action, Life Graph, audit panels) lands with the full dashboard build.
+
+Camera capture, mic capture/playback, and the actual Gemini Live exchange all require a real
+browser and (for the Gemini side) a configured Vertex AI project — neither is available in this
+environment, so those paths are verified structurally (clean TypeScript build, dev server serves
+every module without error) rather than by hand in a browser. Worth a real check once both are
+available.
+
 ## Stack
 
 | Requirement | Where |
 |---|---|
 | Gemini 3.5 (Flash + Pro) via Vertex AI | `backend/common/gcp_clients.py:get_genai_client`, used by perception, clarifier, safety_router, live_session_gateway, action |
-| Gemini Live API | live_session_gateway (voice+video session) |
+| Gemini Live API | `services/live_session_gateway/gemini_live.py`, relayed to the dashboard over `/ws/session` |
 | Google ADK | `backend/services/orchestrator/adk_agent.py` |
 | GenAI SDK | structured output — `services/action/gemini_extraction.py` extracts prescription fields into a Pydantic schema at enrollment |
 | Firestore | Life Graph + per-user case state (`services/memory/clients.py:get_firestore_client`, memory-only) |
@@ -118,7 +155,8 @@ Memory Agent's API, the same as any other service would.
 Without Docker:
 
 ```bash
-cp .env.example .env      # fill in GCP_PROJECT_ID etc. once you have a project
+cp .env.example .env                     # fill in GCP_PROJECT_ID etc. once you have a project
+cp frontend/.env.example frontend/.env.local
 pip install -r backend/requirements.txt
 (cd frontend && npm install)
 scripts/dev.sh

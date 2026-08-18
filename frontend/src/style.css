@@ -3,14 +3,129 @@
   font-family: system-ui, sans-serif;
 }
 
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   background: #12100c;
   color: #f4ede1;
 }
 
-main {
-  max-width: 40rem;
-  margin: 4rem auto;
-  padding: 0 1.5rem;
+main.lantern {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+}
+
+h1 {
+  margin-bottom: 0.25rem;
+}
+
+.lede {
+  color: #cbbfa8;
+  max-width: 38rem;
+}
+
+button {
+  font-size: 1.1rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  border: 2px solid #f2a93b;
+  background: #f2a93b;
+  color: #12100c;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+button:focus-visible {
+  outline: 3px solid #ffd580;
+  outline-offset: 2px;
+}
+
+.status {
+  margin-top: 0.75rem;
+  font-size: 1rem;
+}
+
+.status[data-status="connected"] {
+  color: #8fd18f;
+}
+
+.status[data-status="closed"] {
+  color: #e08a8a;
+}
+
+.panels {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  margin-top: 2rem;
+}
+
+@media (min-width: 48rem) {
+  .panels {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.panel {
+  border: 1px solid #3a3226;
+  border-radius: 0.75rem;
+  padding: 1rem;
+  background: #1a1610;
+  min-height: 20rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel h2 {
+  margin-top: 0;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #cbbfa8;
+}
+
+.camera-panel video {
+  width: 100%;
+  border-radius: 0.5rem;
+  background: #000;
+  flex: 1;
+  min-height: 16rem;
+  object-fit: cover;
+}
+
+.transcript-panel ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.transcript-panel .line {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  max-width: 90%;
+}
+
+.line-user {
+  align-self: flex-end;
+  background: #2c2620;
+}
+
+.line-lantern {
+  align-self: flex-start;
+  background: #3a2c14;
+  border: 1px solid #f2a93b;
 }
