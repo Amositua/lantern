@@ -53,3 +53,15 @@ def write_payment(user_id: str, payload: Dict[str, Any]) -> dict:
 
 def list_people(user_id: str) -> List[dict]:
     return _request("GET", f"/users/{user_id}/people")
+
+
+def get_life_graph(user_id: str) -> dict:
+    return _request("GET", f"/users/{user_id}/life-graph")
+
+
+def write_preference(user_id: str, payload: Dict[str, Any]) -> dict:
+    return _request("POST", f"/users/{user_id}/preferences", json=payload)
+
+
+def resolve_resolution_event(user_id: str, event_id: str, payload: Dict[str, Any]) -> dict:
+    return _request("POST", f"/users/{user_id}/resolution-events/{event_id}/resolve", json=payload)

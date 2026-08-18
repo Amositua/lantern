@@ -124,6 +124,29 @@ The result always lands in one of three branches, matching the trust hierarchy i
 a hallucinated `med_id` outside the user's known set never reaches `confirm_identity`, no matter
 how confident Gemini claims to be about it.
 
+### Clarifier / Dialogue Agent
+
+`backend/services/clarifier` owns three kinds of clarifying exchange, and any of them that
+resolves a preference hands the Memory Agent the user's own words as provenance:
+
+- **`POST /clarify/medication-question`** — turns Perception's ambiguous candidates into one
+  distinguishing question (`templates.py` picks the attribute that actually differs — condition,
+  then dose, then falls back to name).
+- **`POST /clarify/preference-correction`** — the one-off-vs-durable gate from `ARCHITECTURE.md`
+  §5e. `templates.classify_correction_scope` looks for explicit cues ("just this once" vs.
+  "always") in the utterance; if neither is there, it returns a question and writes nothing —
+  callers resume by passing `is_override` explicitly once the user has answered, which skips
+  classification and writes straight through.
+- **`POST /clarify/resolution-question`** — phrases the contradiction Memory Agent already
+  detected (existing value vs. new value) as one question; `POST
+  /clarify/resolution-question/resolve` then carries the user's decision back to Memory Agent's
+  own resolve endpoint.
+
+Every question is phrased by Gemini Pro (`gemini_phrasing.py`), adapted to the user's
+`pacing_pref`/`literacy_level`/abilities where on file — but asking a question is always the safe
+behavior, so a Gemini failure falls back to the plain deterministic template rather than blocking
+the question from being asked at all.
+
 ### Live Session Gateway
 
 `backend/services/live_session_gateway` holds the open Gemini Live connection and relays it to
@@ -168,7 +191,7 @@ available.
 | Gemini 3.5 (Flash + Pro) via Vertex AI | `backend/common/gcp_clients.py:get_genai_client`, used by perception, clarifier, safety_router, live_session_gateway, action |
 | Gemini Live API | `services/live_session_gateway/gemini_live.py`, relayed to the dashboard over `/ws/session` |
 | Google ADK | `backend/services/orchestrator/adk_agent.py` |
-| GenAI SDK | structured output — `services/action/gemini_extraction.py` extracts prescription fields at enrollment, `services/perception/gemini_match.py` returns typed match candidates |
+| GenAI SDK | structured output — `services/action/gemini_extraction.py` extracts prescription fields at enrollment, `services/perception/gemini_match.py` returns typed match candidates, `services/clarifier/gemini_phrasing.py` returns a single phrased question |
 | Firestore | Life Graph + per-user case state (`services/memory/clients.py:get_firestore_client`, memory-only) |
 | Cloud SQL + pgvector | RAG over user documents (`services/memory/clients.py:get_cloud_sql_engine`, memory-only) |
 | Cloud Run | every service below, scale-to-zero |
