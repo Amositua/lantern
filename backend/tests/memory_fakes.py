@@ -5,16 +5,23 @@ from common.memory_client import MemoryAgentError
 
 
 class FakeMemoryStore:
-    def __init__(self, medication=None, payment=None, audit=None, people=None):
-        self.medications = {medication["id"]: dict(medication)} if medication else {}
+    def __init__(self, medication=None, medications=None, payment=None, audit=None, people=None, profile=None):
+        seeded = list(medications or [])
+        if medication:
+            seeded.append(medication)
+        self.medications = {m["id"]: dict(m) for m in seeded}
         self.payment = dict(payment) if payment else None
         self.audit_log = list(audit or [])
         self.people = list(people or [])
+        self.profile = dict(profile) if profile else {}
         self.cases = {}
         self._case_counter = 0
 
     def get_medication(self, user_id, med_id):
         return dict(self.medications[med_id])
+
+    def list_medications(self, user_id):
+        return [dict(m) for m in self.medications.values()]
 
     def update_medication(self, user_id, med_id, payload):
         self.medications[med_id].update(payload)
@@ -27,6 +34,9 @@ class FakeMemoryStore:
 
     def list_people(self, user_id):
         return list(self.people)
+
+    def get_life_graph(self, user_id):
+        return {"profile": dict(self.profile)}
 
     def create_case(self, user_id, payload):
         self._case_counter += 1
@@ -42,6 +52,9 @@ class FakeMemoryStore:
     def update_case(self, user_id, case_id, payload):
         self.cases[case_id].update(payload)
         return dict(self.cases[case_id])
+
+    def list_cases(self, user_id):
+        return [dict(c) for c in self.cases.values()]
 
     def append_audit(self, user_id, payload):
         entry = dict(payload)

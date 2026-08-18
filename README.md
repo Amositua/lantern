@@ -133,6 +133,37 @@ a second attempt — an already-succeeded charge is returned as-is, never repeat
 declined, blocked on step-up, blocked on trusted-circle, aborted as a duplicate, executed, or
 failed — writes one `audit` record.
 
+### Async re-engagement — the stale-reorder abort
+
+`backend/services/action/reengagement.py` is the other safety proof: a Pub/Sub event means
+"re-assess," never "reorder." The event carries a `scheduled_at` timestamp and nothing about the
+medication itself — no drug identity, no dose, no assumption baked in at schedule time — so
+`evaluate_and_reengage` has to re-read the medication fresh on every fire and re-derive whether a
+refill still makes sense:
+
+- **Rx changed since scheduling** — the medication's `last_confirmed` is newer than
+  `scheduled_at`, meaning something changed it after this check was queued. Abort.
+- **Already reordered** — the same duplicate-order guard `reorder.py` uses (`last_refill` vs.
+  `cadence`). Abort, nothing to do.
+- **Discontinued** — `discontinued` is tiered-trust protected in the Memory Agent exactly like
+  `name`/`dose` (`update_medication` treats it as identity, not a casual field). Abort.
+- **Still valid** — proceeds to `reorder.propose_reorder`, the same propose-confirm gate a live
+  turn would use. Nothing executes from here either; it only gets as far as a confirmable case.
+
+Anti-nag lives in the same function: an unanswered nudge (a `medication_reengagement` case still
+in `nudged` state when the next event fires) doesn't repeat identically — its `nudge_count`
+increments on the *same* case, and past three unanswered nudges the fourth escalates to a
+`trusted_circle`/`caregiver` contact instead of asking the user again. Quiet hours (from the
+profile, or a sane default) defer instead of interrupting sleep, and other medications also due
+right now get folded into the same message instead of firing their own separate contact.
+
+`POST /reengagement/fire` is the demo hook — it best-effort publishes to Pub/Sub (so the topic is
+genuinely visible in the Console) and then runs the same evaluation a real push subscription
+would, so the result doesn't depend on a push subscription being wired up for the demo to work.
+`POST /reengagement/pubsub-push` is that real push target, decoding Pub/Sub's standard envelope.
+`backend/tests/test_reengagement.py` proves the abort with a medication whose `last_confirmed`
+moves *after* `scheduled_at` — exactly "change the Rx behind the scenes, then fire the event."
+
 ### Perception Agent
 
 `backend/services/perception` implements the one rule that governs the whole medication flow:

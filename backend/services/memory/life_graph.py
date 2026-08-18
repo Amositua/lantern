@@ -101,12 +101,12 @@ def update_medication(user_id: str, med_id: str, patch: MedicationPatch, db=None
     if not snapshot.exists:
         raise NotFound(f"medication {med_id} not found")
 
-    touches_identity = patch.name is not None or patch.dose is not None
+    touches_identity = patch.name is not None or patch.dose is not None or patch.discontinued is not None
     if touches_identity and patch.verification is None:
         raise TrustViolation(
-            "changing a medication's name or dose requires a verification block — "
-            "re-enter the trusted-enrollment path (prescription, pharmacist, "
-            "trusted-circle, or dispensing-record verification)"
+            "changing a medication's name, dose, or discontinued status requires a "
+            "verification block — re-enter the trusted-enrollment path (prescription, "
+            "pharmacist, trusted-circle, or dispensing-record verification)"
         )
 
     updates: Dict[str, Any] = patch.model_dump(exclude_unset=True, exclude={"verification"})

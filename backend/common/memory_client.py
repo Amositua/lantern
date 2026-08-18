@@ -85,6 +85,10 @@ def create_case(user_id: str, payload: Dict[str, Any]) -> dict:
     return _request("POST", f"/users/{user_id}/cases", json=payload)
 
 
+def list_cases(user_id: str) -> List[dict]:
+    return _request("GET", f"/users/{user_id}/cases")
+
+
 def get_case(user_id: str, case_id: str) -> dict:
     return _request("GET", f"/users/{user_id}/cases/{case_id}")
 

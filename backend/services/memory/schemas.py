@@ -12,6 +12,8 @@ class ProfileWrite(BaseModel):
     literacy_level: Optional[str] = None
     abilities: Optional[Dict[str, bool]] = None
     pacing_pref: Optional[str] = None
+    quiet_hours_start: Optional[int] = Field(None, ge=0, le=23)
+    quiet_hours_end: Optional[int] = Field(None, ge=0, le=23)
 
 
 class MedicationVerification(BaseModel):
@@ -53,6 +55,7 @@ class MedicationPatch(BaseModel):
     cadence: Optional[int] = None
     rx_ref: Optional[str] = None
     last_refill: Optional[datetime] = None
+    discontinued: Optional[bool] = None
     verification: Optional[MedicationVerification] = None
 
 

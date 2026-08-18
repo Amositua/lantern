@@ -1,3 +1,7 @@
+import base64
+import json
+from datetime import datetime, timezone
+
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
@@ -7,7 +11,8 @@ from common.health import run_checks
 from common.logging_utils import get_logger
 from common.memory_client import MemoryAgentError
 
-from . import enrollment, reorder
+from . import enrollment, reengagement, reorder
+from .reengagement_schemas import ReengagementFireRequest, ReengagementResult
 from .reorder_schemas import ReorderConfirmRequest, ReorderProposal, ReorderProposeRequest, ReorderResult
 from .schemas import (
     MedicationExtractRequest,
@@ -114,3 +119,31 @@ def confirm_reorder(payload: ReorderConfirmRequest) -> ReorderResult:
     created, the risk-scaled confirmation requirement is met, and the
     duplicate-order guard passes on a fresh read right before charging."""
     return reorder.resolve_reorder(payload)
+
+
+# ------------------------------------------------------- async re-engagement --
+
+
+@app.post("/reengagement/fire")
+def fire_reengagement(payload: ReengagementFireRequest) -> ReengagementResult:
+    """Manual trigger for the demo (and for anything scheduling refill
+    checks locally): publishes to Pub/Sub best-effort, then runs the same
+    re-evaluation a real push subscription would -- the result reflects
+    fresh Life Graph state, never whatever was true when this was queued."""
+    scheduled_at = payload.scheduled_at or datetime.now(timezone.utc)
+    reengagement.publish_refill_due_event(payload.user_id, payload.med_id, scheduled_at)
+    return reengagement.evaluate_and_reengage(payload)
+
+
+@app.post("/reengagement/pubsub-push")
+def pubsub_push(envelope: dict) -> dict:
+    """Target for a real Pub/Sub push subscription. Cloud Pub/Sub expects a
+    2xx response to ack the message; anything else and it retries."""
+    message = envelope.get("message", {})
+    data = base64.b64decode(message.get("data", "")).decode("utf-8") if message.get("data") else "{}"
+    body = json.loads(data)
+    payload = ReengagementFireRequest(
+        user_id=body["user_id"], med_id=body["med_id"], scheduled_at=body.get("scheduled_at")
+    )
+    result = reengagement.evaluate_and_reengage(payload)
+    return {"acked": True, "status": result.status}
