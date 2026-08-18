@@ -19,8 +19,9 @@ backend/
     clarifier/               asks the clarifying question, adapts pacing to the user
     action/                   calls the pharmacy rail + Paystack behind a confirmation gate
     safety_router/            halts and hands off on crisis or low confidence
-    memory/                   the sole writer to the Life Graph
+    memory/                   the sole writer to the Life Graph — see below
     live_session_gateway/     holds the Gemini Live voice+video session
+  tests/              unit tests for the Life Graph's trust rules + a static sole-writer guard
   Dockerfile         one image, parameterized by SERVICE_MODULE, used for every service
   requirements.txt
 frontend/            the dashboard, a Vite + TypeScript single-page app
@@ -34,6 +35,42 @@ Every service is a small FastAPI app. They share one codebase and one Docker ima
 multi-agent topology stays legible without seven copies of the same boilerplate; each is still
 deployed as its own Cloud Run service.
 
+### The Memory Agent and the Life Graph
+
+`backend/services/memory` is the only code in the repo that ever touches Firestore or Cloud SQL
+— `get_firestore_client`/`get_cloud_sql_engine` live in `services/memory/clients.py`, not in the
+shared `common` package, so no other service can import its way around the rule. Every other
+service reaches user memory through Memory Agent's HTTP API.
+
+Two trust rules are enforced in `services/memory/life_graph.py`, not just documented:
+
+- **Medications.** Changing a medication's `name` or `dose` — creating one, or patching an
+  existing one — requires a `verification` block (`prescription_verified`,
+  `pharmacist_verified`, `trusted_circle_verified`, or `dispensing_record_import`). Creation
+  requires it at the schema level (Pydantic rejects the request before it reaches Firestore);
+  updates check it in `update_medication`, which rejects a bare dose/name change with a
+  `TrustViolation` → HTTP 403. Non-identity fields (cadence, pharmacy_ref, condition) can update
+  without it.
+- **Preferences.** A first-time preference is stored provisional (low confidence, single
+  observation). Repeated confirmations raise its confidence until it hardens. A value that
+  contradicts an already-hardened preference never overwrites it — it raises a
+  `resolution_event` instead, which a human resolves via `POST
+  /users/{id}/resolution-events/{event_id}/resolve`. A one-off correction (`is_override: true`)
+  is logged to the preference's history but never becomes the standing belief.
+
+`backend/tests/test_life_graph.py` exercises both rules directly (with an in-memory fake
+Firestore, so no project or emulator needed) and `backend/tests/test_sole_writer.py` statically
+checks that no other service imports a Firestore/Cloud SQL client. Run them with:
+
+```bash
+pip install -r backend/requirements-dev.txt
+cd backend && pytest
+```
+
+`GET /users/{id}/life-graph` renders the belief summary the dashboard's Life Graph panel reads:
+profile, medications, people, a redacted payment summary (token presence + caps, never the raw
+token), preferences, pending resolution events, and recent audit entries.
+
 ## Stack
 
 | Requirement | Where |
@@ -42,8 +79,8 @@ deployed as its own Cloud Run service.
 | Gemini Live API | live_session_gateway (voice+video session) |
 | Google ADK | `backend/services/orchestrator/adk_agent.py` |
 | GenAI SDK | structured output for Life Graph nodes, action plans, confirmation payloads |
-| Firestore | Life Graph + per-user case state (`get_firestore_client`) |
-| Cloud SQL + pgvector | RAG over user documents (`get_cloud_sql_engine`), owned by memory |
+| Firestore | Life Graph + per-user case state (`services/memory/clients.py:get_firestore_client`, memory-only) |
+| Cloud SQL + pgvector | RAG over user documents (`services/memory/clients.py:get_cloud_sql_engine`, memory-only) |
 | Cloud Run | every service below, scale-to-zero |
 | Pub/Sub | async refill/delivery/re-engagement events (`get_pubsub_publisher`) |
 

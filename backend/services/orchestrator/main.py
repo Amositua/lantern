@@ -2,7 +2,7 @@ import httpx
 from fastapi import FastAPI
 
 from common.config import get_settings
-from common.gcp_clients import get_firestore_client, get_genai_client, get_pubsub_publisher
+from common.gcp_clients import get_genai_client, get_pubsub_publisher
 from common.health import run_checks
 from common.logging_utils import get_logger
 
@@ -31,7 +31,6 @@ def health_deep() -> dict:
     checks = run_checks(
         {
             "vertex_genai": get_genai_client,
-            "firestore": get_firestore_client,
             "pubsub": get_pubsub_publisher,
             "adk_root_agent": _load_adk_agent,
         }
@@ -47,11 +46,7 @@ def _load_adk_agent():
 
 @app.get("/hello")
 async def hello() -> dict:
-    """Round-trips a hello through every downstream agent service.
-
-    Confirms the orchestrator can reach the rest of the fleet over HTTP
-    before any real routing logic is built on top of it.
-    """
+    """Pings every downstream service to prove the fleet is actually reachable."""
     results: dict = {}
     async with httpx.AsyncClient(timeout=3.0) as client:
         for name, base_url in DOWNSTREAM_SERVICES.items():

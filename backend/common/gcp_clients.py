@@ -1,9 +1,11 @@
-"""Lazy factories for the Google Cloud clients Lantern's services depend on.
+"""Google Cloud client factories shared across services.
 
-Every factory builds its client on first use rather than at import time,
-so a service can boot and answer /health locally before real project
-credentials exist. Callers that need a client to actually be configured
-should call the factory and handle ClientInitError.
+Lazy on purpose — a service should be able to boot and answer /health
+locally before real credentials exist. Call the factory, catch
+ClientInitError if it's not configured yet.
+
+No Firestore or Cloud SQL here on purpose — those are memory-only, see
+services/memory/clients.py.
 """
 from functools import lru_cache
 
@@ -29,16 +31,6 @@ def get_genai_client():
 
 
 @lru_cache
-def get_firestore_client():
-    from google.cloud import firestore
-
-    settings = get_settings()
-    if not settings.gcp_project_id:
-        raise ClientInitError("GCP_PROJECT_ID is not set; cannot init the Firestore client")
-    return firestore.Client(project=settings.gcp_project_id, database=settings.firestore_database)
-
-
-@lru_cache
 def get_pubsub_publisher():
     from google.cloud import pubsub_v1
 
@@ -58,26 +50,3 @@ def topic_path(topic_name: str) -> str:
         raise ClientInitError("GCP_PROJECT_ID is not set; cannot build a Pub/Sub topic path")
     publisher = get_pubsub_publisher()
     return publisher.topic_path(settings.gcp_project_id, f"{settings.pubsub_topic_prefix}-{topic_name}")
-
-
-@lru_cache
-def get_cloud_sql_engine():
-    from google.cloud.sql.connector import Connector
-    from sqlalchemy import create_engine
-
-    settings = get_settings()
-    if not settings.cloud_sql_instance_connection_name:
-        raise ClientInitError("CLOUD_SQL_INSTANCE_CONNECTION_NAME is not set; cannot init the Cloud SQL engine")
-
-    connector = Connector()
-
-    def getconn():
-        return connector.connect(
-            settings.cloud_sql_instance_connection_name,
-            "pg8000",
-            user=settings.cloud_sql_user,
-            password=settings.cloud_sql_password,
-            db=settings.cloud_sql_database,
-        )
-
-    return create_engine("postgresql+pg8000://", creator=getconn)
