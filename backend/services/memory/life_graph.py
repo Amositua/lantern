@@ -156,6 +156,8 @@ def write_payment(user_id: str, payment: PaymentWrite, db=None) -> dict:
     ts = now()
     doc = {
         "method_ref": payment.method_ref,
+        "card_last4": payment.card_last4,
+        "card_bank": payment.card_bank,
         "per_transaction_cap": payment.per_transaction_cap,
         "daily_cap": payment.daily_cap,
         "never_auto_categories": payment.never_auto_categories,
@@ -164,6 +166,15 @@ def write_payment(user_id: str, payment: PaymentWrite, db=None) -> dict:
     }
     _user_ref(db, user_id).set({"payment": doc}, merge=True)
     return doc
+
+
+def get_payment(user_id: str, db=None) -> Optional[dict]:
+    """Unredacted -- includes the real method_ref. For service-to-service use
+    (Action needs the actual token to charge); the dashboard reads the
+    redacted version through get_belief_summary instead."""
+    db = _db(db)
+    user_data = _user_ref(db, user_id).get().to_dict() or {}
+    return user_data.get("payment")
 
 
 # -------------------------------------------------------------- documents --

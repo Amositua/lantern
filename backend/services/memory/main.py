@@ -119,6 +119,16 @@ def put_payment(user_id: str, payload: PaymentWrite) -> dict:
     return lg.write_payment(user_id, payload)
 
 
+@app.get("/users/{user_id}/payment")
+def get_payment(user_id: str) -> dict:
+    """Unredacted, includes the real method_ref -- for services that
+    actually need to charge, not for display."""
+    payment = lg.get_payment(user_id)
+    if payment is None:
+        raise lg.NotFound(f"no payment method on file for user {user_id}")
+    return payment
+
+
 # --------------------------------------------------------------- documents --
 
 

@@ -11,7 +11,9 @@ logger = get_logger("memory_client")
 
 
 class MemoryAgentError(RuntimeError):
-    pass
+    def __init__(self, message: str, status_code: Optional[int] = None):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 def _request(method: str, path: str, json: Optional[dict] = None) -> Any:
@@ -30,7 +32,7 @@ def _request(method: str, path: str, json: Optional[dict] = None) -> Any:
             detail = resp.json().get("detail", detail)
         except ValueError:
             pass
-        raise MemoryAgentError(f"Memory Agent rejected {method} {path}: {detail}")
+        raise MemoryAgentError(f"Memory Agent rejected {method} {path}: {detail}", status_code=resp.status_code)
 
     return resp.json()
 
@@ -65,3 +67,35 @@ def write_preference(user_id: str, payload: Dict[str, Any]) -> dict:
 
 def resolve_resolution_event(user_id: str, event_id: str, payload: Dict[str, Any]) -> dict:
     return _request("POST", f"/users/{user_id}/resolution-events/{event_id}/resolve", json=payload)
+
+
+def get_payment(user_id: str) -> dict:
+    return _request("GET", f"/users/{user_id}/payment")
+
+
+def get_medication(user_id: str, med_id: str) -> dict:
+    return _request("GET", f"/users/{user_id}/medications/{med_id}")
+
+
+def update_medication(user_id: str, med_id: str, payload: Dict[str, Any]) -> dict:
+    return _request("PATCH", f"/users/{user_id}/medications/{med_id}", json=payload)
+
+
+def create_case(user_id: str, payload: Dict[str, Any]) -> dict:
+    return _request("POST", f"/users/{user_id}/cases", json=payload)
+
+
+def get_case(user_id: str, case_id: str) -> dict:
+    return _request("GET", f"/users/{user_id}/cases/{case_id}")
+
+
+def update_case(user_id: str, case_id: str, payload: Dict[str, Any]) -> dict:
+    return _request("PATCH", f"/users/{user_id}/cases/{case_id}", json=payload)
+
+
+def append_audit(user_id: str, payload: Dict[str, Any]) -> dict:
+    return _request("POST", f"/users/{user_id}/audit", json=payload)
+
+
+def list_audit(user_id: str, limit: int = 50) -> List[dict]:
+    return _request("GET", f"/users/{user_id}/audit?limit={limit}")

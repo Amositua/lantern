@@ -15,13 +15,12 @@ from .schemas import (
     MedicationVerifyRequest,
     PaymentEnrollRequest,
 )
+from .trust_checks import TrustedCircleNotVerified, require_trusted_circle_member
+
+__all__ = ["EnrollmentError", "TrustedCircleNotVerified"]
 
 
 class EnrollmentError(RuntimeError):
-    pass
-
-
-class TrustedCircleNotVerified(EnrollmentError):
     pass
 
 
@@ -38,21 +37,9 @@ def extract_prescription(request: MedicationExtractRequest) -> MedicationExtract
     return MedicationExtractResponse(document_id=document["id"], extracted=extraction)
 
 
-def _require_trusted_circle_member(user_id: str, verified_by: str) -> None:
-    people = memory_client.list_people(user_id)
-    normalized = verified_by.strip().lower()
-    for person in people:
-        roles = [r.lower() for r in person.get("roles", [])]
-        if person.get("name", "").strip().lower() == normalized and (
-            "trusted_circle" in roles or "caregiver" in roles
-        ):
-            return
-    raise TrustedCircleNotVerified(f"{verified_by!r} is not recorded as a trusted-circle member for this user")
-
-
 def verify_and_enroll_medication(request: MedicationVerifyRequest) -> dict:
     if request.verification.method == "trusted_circle_verified":
-        _require_trusted_circle_member(request.user_id, request.verification.verified_by)
+        require_trusted_circle_member(request.user_id, request.verification.verified_by)
 
     return memory_client.create_medication(
         request.user_id,
@@ -109,6 +96,8 @@ def enroll_payment(request: PaymentEnrollRequest) -> dict:
         request.user_id,
         {
             "method_ref": verified.authorization_code,
+            "card_last4": verified.last4,
+            "card_bank": verified.bank,
             "per_transaction_cap": request.per_transaction_cap,
             "daily_cap": request.daily_cap,
             "never_auto_categories": request.never_auto_categories,

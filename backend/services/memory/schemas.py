@@ -79,6 +79,8 @@ class PaymentWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     method_ref: str = Field(..., min_length=1, description="Paystack authorization_code — a token, never a card number")
+    card_last4: Optional[str] = Field(None, description="Last 4 digits only, for read-back — never the full PAN")
+    card_bank: Optional[str] = None
     per_transaction_cap: Optional[float] = None
     daily_cap: Optional[float] = None
     never_auto_categories: List[str] = Field(default_factory=list)
@@ -112,6 +114,7 @@ class CaseWrite(BaseModel):
     state: str
     steps: List[str] = Field(default_factory=list)
     pending_async_ref: Optional[str] = None
+    data: Dict[str, Any] = Field(default_factory=dict, description="Task-specific payload, e.g. a reorder proposal")
 
 
 class CasePatch(BaseModel):
@@ -120,6 +123,7 @@ class CasePatch(BaseModel):
     state: Optional[str] = None
     steps: Optional[List[str]] = None
     pending_async_ref: Optional[str] = None
+    data: Optional[Dict[str, Any]] = None
 
 
 class AuditWrite(BaseModel):

@@ -83,9 +83,10 @@ payment's token. Nothing here is reachable from a bare voice turn.
   fields (correcting anything misread) and calls `POST
   /enrollment/medications/prescription/verify` with the confirmed fields and a verification
   block; only that second call reaches the Memory Agent. The same endpoint accepts
-  `trusted_circle_verified`, which `enrollment.py` checks against the user's own `people` list
+  `trusted_circle_verified`, which `trust_checks.py` checks against the user's own `people` list
   (must be recorded with role `trusted_circle` or `caregiver`) before it's accepted — a claimed
-  trusted-circle identity that isn't on record is rejected with 403, not trusted on say-so.
+  trusted-circle identity that isn't on record is rejected with 403, not trusted on say-so. The
+  same check backs the reorder confirmation gate below.
 - **Medication, by dispensing record.** `POST /enrollment/medications/import-dispensing-record`
   pulls a record from the pharmacy aggregator (`pharmacy_client.py`, abstracted behind an
   interface with a `SandboxPharmacyClient` fixture for the demo) and writes it straight through,
@@ -99,6 +100,38 @@ payment's token. Nothing here is reachable from a bare voice turn.
 
 Action never touches Firestore either — `common/memory_client.py` is a small HTTP client that
 calls the Memory Agent's API, the same as any other service would.
+
+### Medication reorder + the confirmation gate
+
+`backend/services/action/reorder.py` is the propose → confirm → execute gate itself.
+`POST /reorder/propose` reads the medication and payment on file, prices the refill through the
+pharmacy client, and — this is the part worth being explicit about — decides the required
+confirmation strength right there (`determine_required_confirmation`):
+
+- **`simple`** — under the per-transaction cap, not on the never-auto list, and this exact med
+  has a prior successful reorder on record (checked against audit history, not just assumed).
+- **`step_up`** — over the cap, on the never-auto list, or the *first* reorder of this med — "new
+  or unfamiliar" needs an OTP even if the amount itself is small.
+- **`trusted_circle`** — more than double the per-transaction cap. Step-up alone isn't enough;
+  `/reorder/confirm` then checks `confirmed_by` against the user's own recorded people (same
+  check `enrollment.py` uses for trusted-circle med enrollment, pulled into `trust_checks.py` so
+  both places enforce it identically) rather than trusting whoever's name comes through.
+
+Propose never charges anything — it only creates a Memory Agent `case` (state `proposed`,
+carrying the priced proposal in its `data`) and returns a read-back sentence built from it:
+identity, amount, payee, and a card descriptor (`"your GTBank card ending in 4242"` — the last4
+Paystack returns at enrollment, never the PAN). `/reorder/confirm` requires that exact `case_id`
+and `confirmed: true`; there's no other path to a charge. It re-checks everything against fresh
+state, not the propose-time snapshot — including the duplicate-order guard (`last_refill` vs.
+`cadence`), which runs once at propose (so a doomed request doesn't even get read back) and again
+right before the actual charge, since a case can sit unconfirmed long enough for that to go stale.
+
+The charge itself goes through `_charge_with_verify_before_retry`: the case's id becomes the
+Paystack idempotency key, and if `charge_authorization` times out (an outcome the sandbox can
+simulate on demand), the code checks `verify_charge` for that same key *before* ever considering
+a second attempt — an already-succeeded charge is returned as-is, never repeated. Every branch —
+declined, blocked on step-up, blocked on trusted-circle, aborted as a duplicate, executed, or
+failed — writes one `audit` record.
 
 ### Perception Agent
 

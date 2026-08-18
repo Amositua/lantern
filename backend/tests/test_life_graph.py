@@ -2,9 +2,13 @@ import pytest
 
 from services.memory import life_graph as lg
 from services.memory.schemas import (
+    CasePatch,
+    CaseWrite,
     MedicationCreate,
     MedicationPatch,
     MedicationVerification,
+    PaymentVerification,
+    PaymentWrite,
     PreferenceWrite,
 )
 
@@ -167,3 +171,38 @@ def test_resolving_a_contradiction_toward_the_new_value_updates_the_standing_bel
     standing = lg.list_preferences("u1", db=db)
     assert standing[0]["value"] == "large"
     assert lg.list_resolution_events("u1", db=db) == []
+
+
+# ----------------------------------------------------------- payment + cases --
+
+
+def test_get_payment_returns_the_unredacted_method_ref(db):
+    lg.write_payment(
+        "u1",
+        PaymentWrite(
+            method_ref="AUTH_real_token_123",
+            per_transaction_cap=5000,
+            daily_cap=10000,
+            verification=PaymentVerification(method="paystack_first_transaction_2fa"),
+        ),
+        db=db,
+    )
+    payment = lg.get_payment("u1", db=db)
+    assert payment["method_ref"] == "AUTH_real_token_123"
+
+
+def test_get_payment_is_none_when_nothing_enrolled(db):
+    assert lg.get_payment("u1", db=db) is None
+
+
+def test_case_data_field_round_trips_through_create_and_update(db):
+    case = lg.create_case(
+        "u1",
+        CaseWrite(task="medication_reorder", state="proposed", data={"med_id": "med-amlo", "amount_kobo": 450000}),
+        db=db,
+    )
+    assert case["data"]["med_id"] == "med-amlo"
+
+    updated = lg.update_case("u1", case["id"], CasePatch(state="executed"), db=db)
+    assert updated["state"] == "executed"
+    assert updated["data"]["amount_kobo"] == 450000  # untouched by a patch that doesn't set data
