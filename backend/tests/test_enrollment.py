@@ -136,3 +136,28 @@ def test_payment_enrollment_stores_only_the_token_with_caps(monkeypatch):
 
     forbidden_keys = {"card_number", "cvv", "pan", "expiry", "card"}
     assert forbidden_keys.isdisjoint(calls[0].keys())
+
+
+def test_enrolling_with_the_demo_timeout_reference_produces_a_token_that_times_out_once(monkeypatch):
+    # this is what the demo's no-double-charge script enrolls with, on purpose,
+    # to prove verify-before-retry live rather than only in a unit test
+    paystack = SandboxPaystackClient()
+    monkeypatch.setattr(enrollment, "get_paystack_client", lambda: paystack)
+    monkeypatch.setattr(enrollment.memory_client, "write_payment", lambda user_id, payload: payload)
+
+    request = PaymentEnrollRequest(
+        user_id="u1", paystack_reference="demo_timeout_setup_1", per_transaction_cap=10000, daily_cap=20000
+    )
+    result = enrollment.enroll_payment(request)
+    method_ref = result["method_ref"]
+
+    assert method_ref.startswith("AUTH_timeout_once_")
+
+    # the very next charge against this token times out once, then succeeds
+    from services.action.paystack_client import PaystackTimeoutError
+
+    with pytest.raises(PaystackTimeoutError):
+        paystack.charge_authorization(method_ref, 450000, "user+u1@lantern.local", "idem-1")
+    charge = paystack.charge_authorization(method_ref, 450000, "user+u1@lantern.local", "idem-1")
+    assert charge.status == "success"
+    assert len(paystack._charges) == 1  # one idempotency key, one recorded charge, despite two calls

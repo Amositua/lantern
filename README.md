@@ -363,6 +363,53 @@ round-trip proof that the orchestrator can actually reach the rest of the fleet.
 
 The dashboard dev server runs on `:5173`.
 
+## Running the full demo
+
+`scripts/demo.sh` is the single entry point: it starts the whole fleet, seeds a demo user with an
+enrolled medication and a tokenized payment method, starts the dashboard, and prints a runbook.
+
+```bash
+cp .env.example .env      # fill in GCP_PROJECT_ID and the rest before running this for real
+scripts/demo.sh
+```
+
+The pharmacy and Paystack rails stay sandboxed regardless of what's in `.env` — the point of a
+real `GCP_PROJECT_ID` here is that the Life Graph itself is genuinely Firestore, not a fixture.
+
+Both `demo.sh` and `dev.sh` create a project-local `.venv` on first run (rather than trusting
+whatever `uvicorn` happens to be first on `PATH`) and install `backend/requirements.txt` into it.
+This also sidesteps a real trap on Windows: a bare `python3` on `PATH` can be a Microsoft Store
+redirect stub rather than an interpreter, so both scripts actually invoke each candidate and check
+its exit code rather than trusting `command -v`.
+
+What `scripts/demo/` contains:
+
+- `_client.py` — a tiny stdlib-only HTTP helper the other scripts share, so none of them need a
+  pip install of their own to run.
+- `seed_demo_user.py` — seeds a profile, a trusted-circle person, a medication (via dispensing-
+  record import, so it's already tier-2 trusted), and a tokenized payment method.
+- `prove_stale_abort.py` — the stale-reorder abort, live: records when a refill check was
+  scheduled, changes the medication's dose behind the scenes through the normal verified-write
+  path, then fires the re-engagement event with the *original* schedule time. Lantern re-reads
+  current state at fire time and aborts rather than acting on what's now stale.
+- `prove_no_double_charge.py` — the other safety proof: enrolls a payment method set up to time
+  out on its first charge, confirms a reorder against it, and shows the audit log holds exactly
+  one successful charge for that idempotency key, not two.
+
+Run the two proofs from a second terminal while `demo.sh` is up:
+
+```bash
+.venv/Scripts/python scripts/demo/prove_stale_abort.py       # .venv/bin/python on macOS/Linux
+.venv/Scripts/python scripts/demo/prove_no_double_charge.py
+```
+
+### What to show in the Cloud Console alongside the demo
+
+- **Firestore** — the Life Graph documents under the demo user, updating live as panels refresh.
+- **Pub/Sub** — the re-engagement topic `demo.sh`/`prove_stale_abort.py` publish to.
+- **Vertex AI** — the Gemini calls perception, clarifier, safety router, and prescription
+  extraction make, visible in the project's Vertex AI request logs.
+
 ## Environment variables
 
 See `.env.example` for local/Docker runs and `env.yaml.example` for Cloud Run deploys. Every

@@ -62,7 +62,11 @@ class SandboxPaystackClient(PaystackClient):
         self._charges: dict = {}
         self._timed_out_once: set = set()
 
-    # ref starting with demo_fail_ = failed 2FA, anything else tokenizes ok
+    # ref starting with demo_fail_ = failed 2FA. demo_timeout_setup_ tokenizes
+    # normally but the resulting authorization_code will make its *first*
+    # future charge attempt time out (then succeed on the verify-before-retry
+    # path) -- how the demo enrolls a payment method specifically to prove
+    # that mechanism on demand. Anything else tokenizes cleanly as usual.
     def verify_transaction(self, reference: str) -> VerifiedTransaction:
         if reference.startswith("demo_fail_"):
             return VerifiedTransaction(
@@ -70,10 +74,11 @@ class SandboxPaystackClient(PaystackClient):
             )
 
         digest = hashlib.sha256(reference.encode("utf-8")).hexdigest()[:24]
+        prefix = "AUTH_timeout_once_" if reference.startswith("demo_timeout_setup_") else "AUTH_sandbox_"
         return VerifiedTransaction(
             reference=reference,
             status="success",
-            authorization_code=f"AUTH_sandbox_{digest}",
+            authorization_code=f"{prefix}{digest}",
             channel="card",
             reusable=True,
             last4="4242",
