@@ -12,9 +12,14 @@ class Settings(BaseSettings):
 
     gcp_project_id: Optional[str] = None
     gcp_region: str = "us-central1"
-    vertex_location: str = "us-central1"
+    # Gemini 3.5 Flash only serves out of the global Vertex AI endpoint right
+    # now, not regional ones -- this is separate from gcp_region, which still
+    # governs Cloud Run/Firestore/everything else.
+    vertex_location: str = "global"
     gemini_flash_model: str = "gemini-3.5-flash"
-    gemini_pro_model: str = "gemini-3.5-pro"
+    # No 3.5 Pro model exists yet; 3.1-pro-preview is the same generation's
+    # Pro tier and what's actually available.
+    gemini_pro_model: str = "gemini-3.1-pro-preview"
 
     firestore_database: str = "(default)"
 

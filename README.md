@@ -420,8 +420,8 @@ variable a service reads is defined in `backend/common/config.py`:
 | `ENVIRONMENT` | `local` or `production`, surfaced on `/health` |
 | `GCP_PROJECT_ID` | required for Vertex AI, Firestore, Pub/Sub |
 | `GCP_REGION` | Cloud Run / Artifact Registry region |
-| `VERTEX_LOCATION` | Vertex AI location for Gemini calls |
-| `GEMINI_FLASH_MODEL`, `GEMINI_PRO_MODEL` | model ids used by the GenAI client |
+| `VERTEX_LOCATION` | Vertex AI location for Gemini calls -- `global`, not a region; `gemini-3.5-flash` only serves from there right now |
+| `GEMINI_FLASH_MODEL`, `GEMINI_PRO_MODEL` | model ids used by the GenAI client -- there's no `gemini-3.5-pro` yet, so Pro calls use `gemini-3.1-pro-preview` |
 | `FIRESTORE_DATABASE` | Firestore database id (`(default)` unless you've created a named one) |
 | `CLOUD_SQL_INSTANCE_CONNECTION_NAME` | `project:region:instance` for the Cloud SQL connector |
 | `CLOUD_SQL_DATABASE`, `CLOUD_SQL_USER`, `CLOUD_SQL_PASSWORD` | Cloud SQL credentials |
