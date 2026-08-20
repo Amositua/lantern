@@ -1,5 +1,6 @@
 from services.clarifier import clarifier, templates
 from services.clarifier.schemas import (
+    DocumentQuestionRequest,
     MedicationOption,
     MedicationQuestionRequest,
     PreferenceCorrectionRequest,
@@ -162,3 +163,49 @@ def test_resolve_contradiction_calls_memory_agent_with_the_decision(monkeypatch)
 
     assert result == {"decision": "accept_new"}
     assert calls == [("u1", "ev1", {"decision": "accept_new", "resolved_by": "user"})]
+
+
+# ------------------------------------------------------------ document Q&A --
+
+
+def test_document_question_with_no_matches_never_calls_gemini(monkeypatch):
+    from services.clarifier import document_qa
+
+    monkeypatch.setattr(clarifier.memory_client, "search_documents", lambda user_id, query: [])
+
+    def _fail(*args, **kwargs):
+        raise AssertionError("shouldn't call Gemini when there's nothing to ground the answer in")
+
+    monkeypatch.setattr(document_qa, "_answer_with_gemini", _fail)
+
+    result = clarifier.answer_document_question(DocumentQuestionRequest(user_id="u1", question="anything?"))
+
+    assert result.grounded is False
+    assert result.sources == []
+
+
+def test_document_question_with_a_match_returns_a_grounded_answer_and_its_source(monkeypatch):
+    matches = [{"document_id": "doc-1", "type": "letter", "uri": "gs://x/letter.jpg", "excerpt": "..."}]
+    monkeypatch.setattr(clarifier.memory_client, "search_documents", lambda user_id, query: matches)
+    monkeypatch.setattr(clarifier, "answer_from_documents", lambda question, matches: ("It's on the 14th.", True))
+
+    result = clarifier.answer_document_question(DocumentQuestionRequest(user_id="u1", question="when is it?"))
+
+    assert result.grounded is True
+    assert result.answer == "It's on the 14th."
+    assert [s.model_dump() for s in result.sources] == [
+        {"document_id": "doc-1", "type": "letter", "uri": "gs://x/letter.jpg"}
+    ]
+
+
+def test_document_question_stays_ungrounded_when_matches_dont_actually_answer_it(monkeypatch):
+    matches = [{"document_id": "doc-1", "type": "letter", "uri": "gs://x/letter.jpg", "excerpt": "..."}]
+    monkeypatch.setattr(clarifier.memory_client, "search_documents", lambda user_id, query: matches)
+    monkeypatch.setattr(
+        clarifier, "answer_from_documents", lambda question, matches: ("I don't have anything about that.", False)
+    )
+
+    result = clarifier.answer_document_question(DocumentQuestionRequest(user_id="u1", question="unrelated?"))
+
+    assert result.grounded is False
+    assert result.sources == []  # never cites a document as a source for an answer it didn't actually use

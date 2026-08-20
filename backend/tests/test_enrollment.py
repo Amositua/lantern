@@ -4,6 +4,7 @@ from services.action import enrollment
 from services.action.paystack_client import SandboxPaystackClient
 from services.action.pharmacy_client import SandboxPharmacyClient
 from services.action.schemas import (
+    DocumentImportRequest,
     MedicationImportRequest,
     MedicationVerification,
     MedicationVerifyRequest,
@@ -161,3 +162,30 @@ def test_enrolling_with_the_demo_timeout_reference_produces_a_token_that_times_o
     charge = paystack.charge_authorization(method_ref, 450000, "user+u1@lantern.local", "idem-1")
     assert charge.status == "success"
     assert len(paystack._charges) == 1  # one idempotency key, one recorded charge, despite two calls
+
+
+# --------------------------------------------------------- document import --
+
+
+def test_importing_a_letter_stores_the_transcription_as_searchable_text(monkeypatch):
+    monkeypatch.setattr(enrollment, "transcribe_document", lambda uri, doc_type: "Your appointment is on the 14th.")
+    calls = []
+    monkeypatch.setattr(
+        enrollment.memory_client,
+        "create_document",
+        lambda user_id, payload: calls.append(payload) or {"id": "doc-1"},
+    )
+
+    request = DocumentImportRequest(user_id="u1", image_uri="gs://x/letter.jpg", doc_type="letter")
+    result = enrollment.import_reference_document(request)
+
+    assert result.document_id == "doc-1"
+    assert result.text == "Your appointment is on the 14th."
+    assert calls[0]["text"] == "Your appointment is on the 14th."
+    assert calls[0]["type"] == "letter"
+    assert "verification" not in calls[0]  # reference material, not a Life Graph fact
+
+
+def test_document_import_request_rejects_an_unrecognized_doc_type():
+    with pytest.raises(Exception):
+        DocumentImportRequest(user_id="u1", image_uri="gs://x/y.jpg", doc_type="something_else")

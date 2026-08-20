@@ -267,7 +267,7 @@ users/{userId}
   medications/{medId}:  { name, dose, condition, pharmacy_ref, last_refill, cadence, rx_ref }
   people/{personId}:    { name, relation, roles: [emergency, groceries, ...], contact }
   payment:        { method_ref (tokenised), threshold_auto_confirm }
-  documents/{docId}:    { type, uri, extracted_fields, vector_ref → Cloud SQL }
+  documents/{docId}:    { type, uri, extracted_fields, text → embedded into Cloud SQL/pgvector }
   preferences/{prefId}: { domain, learned_value, source_correction, updated_at }
   cases/{caseId}:       { task, state, steps[], pending_async_ref, created_at }
   audit/{eventId}:      { action, proposed, confirmed_by, result, ts }   ← every action logged

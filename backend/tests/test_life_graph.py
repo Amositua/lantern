@@ -4,6 +4,7 @@ from services.memory import life_graph as lg
 from services.memory.schemas import (
     CasePatch,
     CaseWrite,
+    DocumentWrite,
     MedicationCreate,
     MedicationPatch,
     MedicationVerification,
@@ -13,11 +14,17 @@ from services.memory.schemas import (
 )
 
 from .fake_firestore import FakeFirestoreClient
+from .fake_vector_store import FakeVectorStore
 
 
 @pytest.fixture
 def db():
     return FakeFirestoreClient()
+
+
+@pytest.fixture
+def vectors():
+    return FakeVectorStore()
 
 
 def _verified() -> MedicationVerification:
@@ -206,3 +213,40 @@ def test_case_data_field_round_trips_through_create_and_update(db):
     updated = lg.update_case("u1", case["id"], CasePatch(state="executed"), db=db)
     assert updated["state"] == "executed"
     assert updated["data"]["amount_kobo"] == 450000  # untouched by a patch that doesn't set data
+
+
+# ------------------------------------------------------- document RAG --
+
+
+def test_document_without_text_is_stored_but_not_embedded(db, vectors):
+    lg.create_document("u1", DocumentWrite(type="label", uri="gs://x/label.jpg"), db=db, store=vectors)
+    assert vectors.search("u1", "anything") == []
+
+
+def test_document_with_text_becomes_searchable(db, vectors):
+    lg.create_document(
+        "u1",
+        DocumentWrite(
+            type="letter",
+            uri="gs://x/letter.jpg",
+            text="Your cardiology appointment is on the 14th at City General.",
+        ),
+        db=db,
+        store=vectors,
+    )
+    results = lg.search_documents("u1", "when is my cardiology appointment", db=db, store=vectors)
+    assert len(results) == 1
+    assert results[0]["type"] == "letter"
+    assert "cardiology" in results[0]["excerpt"]
+
+
+def test_document_search_never_returns_another_users_documents(db, vectors):
+    lg.create_document(
+        "u1", DocumentWrite(type="letter", uri="gs://x/a.jpg", text="u1's appointment is Tuesday."), db=db, store=vectors
+    )
+    lg.create_document(
+        "u2", DocumentWrite(type="letter", uri="gs://x/b.jpg", text="u2's appointment is Friday."), db=db, store=vectors
+    )
+    results = lg.search_documents("u1", "appointment", db=db, store=vectors)
+    assert len(results) == 1
+    assert results[0]["uri"] == "gs://x/a.jpg"

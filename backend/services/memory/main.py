@@ -144,6 +144,13 @@ def create_document(user_id: str, payload: DocumentWrite) -> dict:
     return lg.create_document(user_id, payload)
 
 
+@app.get("/users/{user_id}/documents/search")
+def search_documents(user_id: str, q: str, top_k: int = 3) -> List[dict]:
+    """pgvector similarity search over this user's own documents, scoped
+    to user_id -- what the Clarifier's document-question flow reads from."""
+    return lg.search_documents(user_id, q, top_k=top_k)
+
+
 # ------------------------------------------------------------- preferences --
 
 

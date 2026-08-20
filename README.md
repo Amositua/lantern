@@ -211,6 +211,37 @@ Every question is phrased by Gemini Pro (`gemini_phrasing.py`), adapted to the u
 behavior, so a Gemini failure falls back to the plain deterministic template rather than blocking
 the question from being asked at all.
 
+### Document RAG (Cloud SQL + pgvector)
+
+Letters and labels aren't Life Graph facts — they're reference material, so this path is
+deliberately outside the trusted-enrollment/verification machinery the medication and payment
+paths use. Three services, one flow:
+
+- **Ingest** — `POST /enrollment/documents/import` on Action reads a letter/label image with
+  Gemini Pro (`gemini_extraction.py:transcribe_document`, full plain-text transcription rather
+  than the structured field extraction the prescription path uses) and hands the text to Memory's
+  `POST /documents`. No verification block, because nothing here can change a medication or a
+  payment — the trust-tier rules in `ARCHITECTURE.md` §5e simply don't apply to informational
+  content.
+- **Store + embed** — Memory's `create_document` (`life_graph.py`) writes the same Firestore
+  metadata as before, and — new — if the document carries `text`, embeds it
+  (`services/memory/vector_store.py`, `gemini-embedding-001`) into a Cloud SQL/pgvector table
+  scoped by `user_id`. `GET /users/{id}/documents/search?q=...` does the reverse: embed the query,
+  cosine-search Postgres for that same user's rows only, and cross-reference each hit back to its
+  Firestore metadata for `type`/`uri`. `backend/tests/test_life_graph.py` proves the cross-user
+  isolation directly — two users' documents never surface in each other's search results.
+- **Answer, grounded** — Clarifier's `POST /clarify/document-question`
+  (`document_qa.py:answer_from_documents`) takes the search hits and asks Gemini Pro to answer
+  *using only those excerpts*, explicitly instructed to say it doesn't know rather than reach for
+  outside knowledge — the same "never guess" posture as vision matching, applied to retrieval. No
+  matches at all skips the Gemini call entirely and returns the plain fallback message directly.
+  `test_clarifier.py` locks in that an ungrounded answer never cites a source, and that an
+  answered question always does.
+
+`scripts/demo/prove_document_qa.py` is the live proof: one question the seeded letter answers, one
+it doesn't, and the second call has to come back "not in your documents" rather than an invented
+answer.
+
 ### Safety Router
 
 `backend/services/safety_router` runs on every turn and can veto anything in progress. Two
@@ -325,7 +356,7 @@ real Gemini Live connection (no Vertex AI project configured in this environment
 | Google ADK | `backend/services/orchestrator/adk_agent.py` |
 | GenAI SDK | structured output — `services/action/gemini_extraction.py` extracts prescription fields at enrollment, `services/perception/gemini_match.py` returns typed match candidates, `services/clarifier/gemini_phrasing.py` returns a single phrased question |
 | Firestore | Life Graph + per-user case state (`services/memory/clients.py:get_firestore_client`, memory-only) |
-| Cloud SQL + pgvector | RAG over user documents (`services/memory/clients.py:get_cloud_sql_engine`, memory-only) |
+| Cloud SQL + pgvector | RAG over the user's own letters/labels (`services/memory/vector_store.py`, memory-only) — ingested via Action's `/enrollment/documents/import`, answered via Clarifier's `/clarify/document-question` |
 | Cloud Run | every service below, scale-to-zero |
 | Pub/Sub | async refill/delivery/re-engagement events (`get_pubsub_publisher`) |
 
@@ -387,7 +418,8 @@ What `scripts/demo/` contains:
 - `_client.py` — a tiny stdlib-only HTTP helper the other scripts share, so none of them need a
   pip install of their own to run.
 - `seed_demo_user.py` — seeds a profile, a trusted-circle person, a medication (via dispensing-
-  record import, so it's already tier-2 trusted), and a tokenized payment method.
+  record import, so it's already tier-2 trusted), a tokenized payment method, and a reference
+  letter (embedded into Cloud SQL/pgvector — needs `CLOUD_SQL_INSTANCE_CONNECTION_NAME` set).
 - `prove_stale_abort.py` — the stale-reorder abort, live: records when a refill check was
   scheduled, changes the medication's dose behind the scenes through the normal verified-write
   path, then fires the re-engagement event with the *original* schedule time. Lantern re-reads
@@ -395,12 +427,16 @@ What `scripts/demo/` contains:
 - `prove_no_double_charge.py` — the other safety proof: enrolls a payment method set up to time
   out on its first charge, confirms a reorder against it, and shows the audit log holds exactly
   one successful charge for that idempotency key, not two.
+- `prove_document_qa.py` — asks a question the seeded letter actually answers, then one nothing on
+  file covers. The first comes back grounded with a source; the second comes back a plain "not in
+  your documents" rather than an answer invented from Gemini's general knowledge.
 
-Run the two proofs from a second terminal while `demo.sh` is up:
+Run the three proofs from a second terminal while `demo.sh` is up:
 
 ```bash
 .venv/Scripts/python scripts/demo/prove_stale_abort.py       # .venv/bin/python on macOS/Linux
 .venv/Scripts/python scripts/demo/prove_no_double_charge.py
+.venv/Scripts/python scripts/demo/prove_document_qa.py
 ```
 
 ### What to show in the Cloud Console alongside the demo
@@ -409,6 +445,8 @@ Run the two proofs from a second terminal while `demo.sh` is up:
 - **Pub/Sub** — the re-engagement topic `demo.sh`/`prove_stale_abort.py` publish to.
 - **Vertex AI** — the Gemini calls perception, clarifier, safety router, and prescription
   extraction make, visible in the project's Vertex AI request logs.
+- **Cloud SQL** — the `document_embeddings` table, populated by `seed_demo_user.py` and read by
+  `prove_document_qa.py`.
 
 ## Environment variables
 
@@ -422,8 +460,9 @@ variable a service reads is defined in `backend/common/config.py`:
 | `GCP_REGION` | Cloud Run / Artifact Registry region |
 | `VERTEX_LOCATION` | Vertex AI location for Gemini calls -- `global`, not a region; `gemini-3.5-flash` only serves from there right now |
 | `GEMINI_FLASH_MODEL`, `GEMINI_PRO_MODEL` | model ids used by the GenAI client -- there's no `gemini-3.5-pro` yet, so Pro calls use `gemini-3.1-pro-preview` |
+| `GEMINI_EMBEDDING_MODEL` | embedding model for document RAG (`services/memory/vector_store.py`) |
 | `FIRESTORE_DATABASE` | Firestore database id (`(default)` unless you've created a named one) |
-| `CLOUD_SQL_INSTANCE_CONNECTION_NAME` | `project:region:instance` for the Cloud SQL connector |
+| `CLOUD_SQL_INSTANCE_CONNECTION_NAME` | `project:region:instance` for the Cloud SQL connector -- unset, document RAG's ingest/embed/search calls 503 the same way an unconfigured Firestore call does |
 | `CLOUD_SQL_DATABASE`, `CLOUD_SQL_USER`, `CLOUD_SQL_PASSWORD` | Cloud SQL credentials |
 | `PUBSUB_TOPIC_PREFIX` | prefix applied to every Pub/Sub topic Lantern creates |
 | `PHARMACY_AGGREGATOR_BASE_URL`, `PHARMACY_AGGREGATOR_API_KEY` | pharmacy rail credentials |

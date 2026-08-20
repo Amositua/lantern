@@ -10,6 +10,8 @@ from common.memory_client import MemoryAgentError
 from . import clarifier
 from .schemas import (
     ClarifyingQuestion,
+    DocumentAnswer,
+    DocumentQuestionRequest,
     MedicationQuestionRequest,
     PreferenceCorrectionRequest,
     PreferenceCorrectionResult,
@@ -62,3 +64,10 @@ def resolution_question(payload: ResolutionQuestionRequest) -> ClarifyingQuestio
 @app.post("/clarify/resolution-question/resolve")
 def resolve_contradiction(payload: ResolveContradictionRequest) -> dict:
     return clarifier.resolve_contradiction(payload)
+
+
+@app.post("/clarify/document-question")
+def document_question(payload: DocumentQuestionRequest) -> DocumentAnswer:
+    """Answers grounded only in the user's own enrolled letters/labels --
+    says so plainly rather than guessing when nothing on file answers it."""
+    return clarifier.answer_document_question(payload)

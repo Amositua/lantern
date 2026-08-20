@@ -8,9 +8,12 @@ from typing import Optional
 from common import memory_client
 
 from . import templates
+from .document_qa import answer_from_documents
 from .gemini_phrasing import phrase_question
 from .schemas import (
     ClarifyingQuestion,
+    DocumentAnswer,
+    DocumentQuestionRequest,
     MedicationQuestionRequest,
     PreferenceCorrectionRequest,
     PreferenceCorrectionResult,
@@ -67,3 +70,12 @@ def resolve_contradiction(request: ResolveContradictionRequest) -> dict:
         request.event_id,
         {"decision": request.decision, "resolved_by": request.resolved_by},
     )
+
+
+def answer_document_question(request: DocumentQuestionRequest) -> DocumentAnswer:
+    matches = memory_client.search_documents(request.user_id, request.question)
+    answer, grounded = answer_from_documents(request.question, matches)
+    sources = (
+        [{"document_id": m["document_id"], "type": m["type"], "uri": m["uri"]} for m in matches] if grounded else []
+    )
+    return DocumentAnswer(answer=answer, grounded=grounded, sources=sources)

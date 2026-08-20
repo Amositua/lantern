@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     # No 3.5 Pro model exists yet; 3.1-pro-preview is the same generation's
     # Pro tier and what's actually available.
     gemini_pro_model: str = "gemini-3.1-pro-preview"
+    gemini_embedding_model: str = "gemini-embedding-001"
 
     firestore_database: str = "(default)"
 

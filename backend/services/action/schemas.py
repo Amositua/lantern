@@ -71,3 +71,19 @@ class PaymentEnrollRequest(BaseModel):
     per_transaction_cap: float = Field(..., gt=0)
     daily_cap: float = Field(..., gt=0)
     never_auto_categories: List[str] = Field(default_factory=list)
+
+
+class DocumentImportRequest(BaseModel):
+    # letters/labels -- reference material, not a Life Graph identity fact,
+    # so unlike the medication paths above this needs no verification block
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: str
+    image_uri: str
+    doc_type: Literal["letter", "label", "other"] = "letter"
+
+
+class DocumentImportResponse(BaseModel):
+    document_id: str
+    doc_type: str
+    text: str

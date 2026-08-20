@@ -26,6 +26,7 @@ from .schemas import (
     ProfileWrite,
     ResolutionEventResolve,
 )
+from .vector_store import get_vector_store
 
 HARDENED_CONFIDENCE = 0.75
 HARDENED_OBSERVATIONS = 3
@@ -54,6 +55,10 @@ def now() -> datetime:
 
 def _db(db):
     return db or get_firestore_client()
+
+
+def _vector_store(store):
+    return store or get_vector_store()
 
 
 def _user_ref(db, user_id: str):
@@ -180,18 +185,45 @@ def get_payment(user_id: str, db=None) -> Optional[dict]:
 # -------------------------------------------------------------- documents --
 
 
-def create_document(user_id: str, document: DocumentWrite, db=None) -> dict:
+def create_document(user_id: str, document: DocumentWrite, db=None, store=None) -> dict:
     db = _db(db)
     doc_ref = _user_ref(db, user_id).collection("documents").document()
     doc = document.model_dump()
     doc["created_at"] = now()
     doc_ref.set(doc)
+
+    # text is what makes this document retrievable later -- no text, no
+    # embedding, it just sits in Firestore as metadata like before.
+    if document.text:
+        _vector_store(store).upsert(user_id, doc_ref.id, document.text)
+
     return {"id": doc_ref.id, **doc}
 
 
 def list_documents(user_id: str, db=None) -> List[dict]:
     db = _db(db)
     return [{"id": d.id, **d.to_dict()} for d in _user_ref(db, user_id).collection("documents").stream()]
+
+
+def search_documents(user_id: str, query: str, top_k: int = 3, db=None, store=None) -> List[dict]:
+    db = _db(db)
+    docs_ref = _user_ref(db, user_id).collection("documents")
+    results = []
+    for document_id, excerpt, distance in _vector_store(store).search(user_id, query, top_k=top_k):
+        snapshot = docs_ref.document(document_id).get()
+        if not snapshot.exists:
+            continue
+        metadata = snapshot.to_dict()
+        results.append(
+            {
+                "document_id": document_id,
+                "type": metadata.get("type"),
+                "uri": metadata.get("uri"),
+                "excerpt": excerpt,
+                "distance": distance,
+            }
+        )
+    return results
 
 
 # ------------------------------------------------------------ preferences --

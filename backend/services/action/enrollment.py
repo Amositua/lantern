@@ -3,12 +3,16 @@ for a med or a payment method. Every path here attaches a verification
 block before calling the Memory Agent, so none of it is reachable from a
 bare voice turn.
 """
+from typing import Optional
+
 from common import memory_client
 
-from .gemini_extraction import extract_prescription_fields
+from .gemini_extraction import extract_prescription_fields, transcribe_document
 from .paystack_client import PaystackError, get_paystack_client
 from .pharmacy_client import PharmacyError, get_pharmacy_client
 from .schemas import (
+    DocumentImportRequest,
+    DocumentImportResponse,
     MedicationExtractRequest,
     MedicationExtractResponse,
     MedicationImportRequest,
@@ -24,6 +28,22 @@ class EnrollmentError(RuntimeError):
     pass
 
 
+def _prescription_summary(extraction) -> Optional[str]:
+    if not extraction.name:
+        return None
+    parts = [extraction.name]
+    if extraction.dose:
+        parts.append(extraction.dose)
+    summary = " ".join(parts)
+    if extraction.condition:
+        summary += f", for {extraction.condition}"
+    if extraction.rx_ref:
+        summary += f", ref {extraction.rx_ref}"
+    if extraction.prescribing_doctor:
+        summary += f", prescribed by {extraction.prescribing_doctor}"
+    return summary
+
+
 def extract_prescription(request: MedicationExtractRequest) -> MedicationExtractResponse:
     extraction = extract_prescription_fields(request.image_uri)
     document = memory_client.create_document(
@@ -32,9 +52,22 @@ def extract_prescription(request: MedicationExtractRequest) -> MedicationExtract
             "type": "prescription",
             "uri": request.image_uri,
             "extracted_fields": extraction.model_dump(exclude_none=True),
+            "text": _prescription_summary(extraction),
         },
     )
     return MedicationExtractResponse(document_id=document["id"], extracted=extraction)
+
+
+def import_reference_document(request: DocumentImportRequest) -> DocumentImportResponse:
+    """Letters and labels -- read, stored, and made searchable, but never
+    written into the Life Graph as a fact. This is what backs 'what did
+    that letter say', not a trust-tiered enrollment path."""
+    text = transcribe_document(request.image_uri, request.doc_type)
+    document = memory_client.create_document(
+        request.user_id,
+        {"type": request.doc_type, "uri": request.image_uri, "text": text},
+    )
+    return DocumentImportResponse(document_id=document["id"], doc_type=request.doc_type, text=text)
 
 
 def verify_and_enroll_medication(request: MedicationVerifyRequest) -> dict:

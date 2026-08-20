@@ -58,3 +58,22 @@ class ResolveContradictionRequest(BaseModel):
     event_id: str
     decision: Literal["accept_new", "keep_existing"]
     resolved_by: str
+
+
+class DocumentQuestionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: str
+    question: str
+
+
+class DocumentSource(BaseModel):
+    document_id: str
+    type: Optional[str] = None
+    uri: Optional[str] = None
+
+
+class DocumentAnswer(BaseModel):
+    answer: str
+    grounded: bool
+    sources: List[DocumentSource] = Field(default_factory=list)

@@ -16,6 +16,8 @@ from . import enrollment, reengagement, reorder
 from .reengagement_schemas import ReengagementFireRequest, ReengagementResult
 from .reorder_schemas import ReorderConfirmRequest, ReorderProposal, ReorderProposeRequest, ReorderResult
 from .schemas import (
+    DocumentImportRequest,
+    DocumentImportResponse,
     MedicationExtractRequest,
     MedicationExtractResponse,
     MedicationImportRequest,
@@ -93,6 +95,17 @@ def import_dispensing_record(payload: MedicationImportRequest) -> dict:
     """Enrolls a medication straight from the pharmacy's own verified
     dispensing record — no separate human confirmation step needed."""
     return enrollment.import_medication_from_dispensing_record(payload)
+
+
+# ---------------------------------------------------------- document import --
+
+
+@app.post("/enrollment/documents/import", status_code=status.HTTP_201_CREATED)
+def import_document(payload: DocumentImportRequest) -> DocumentImportResponse:
+    """Reads a letter/label image and stores it, searchable, for later
+    document-question answering. Not a Life Graph fact -- no verification
+    gate, nothing here can change a medication or a payment."""
+    return enrollment.import_reference_document(payload)
 
 
 # ---------------------------------------------------- payment enrollment --

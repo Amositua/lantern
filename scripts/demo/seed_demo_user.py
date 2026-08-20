@@ -1,8 +1,10 @@
 """Seeds the demo user's Life Graph: a profile, a trusted-circle contact,
 an enrolled medication (via the pharmacy's own dispensing record -- tier 2
 in the trust hierarchy, no separate human-verification step needed for
-this path), and a tokenized payment method. Run once against a real
-backend (needs GCP_PROJECT_ID configured) before recording the demo.
+this path), a tokenized payment method, and a reference letter (embedded
+into Cloud SQL/pgvector so prove_document_qa.py has something real to
+retrieve). Run once against a real backend (needs GCP_PROJECT_ID and
+CLOUD_SQL_INSTANCE_CONNECTION_NAME configured) before recording the demo.
 """
 from _client import ACTION_URL, DEMO_USER_ID, MEMORY_URL, call
 
@@ -54,6 +56,22 @@ def main() -> None:
         },
     )
     print(f"  payment enrolled: card ending in {payment['card_last4']}")
+
+    call(
+        "POST",
+        f"{MEMORY_URL}/users/{DEMO_USER_ID}/documents",
+        {
+            "type": "letter",
+            "uri": "seed:cardiology-appointment-letter",
+            "text": (
+                "City General Hospital, Cardiology Department. Dear Amara, your next "
+                "cardiology follow-up appointment is on Thursday the 14th at 10:30am with "
+                "Dr. Adeyemi. Please bring your current medication list. Call 0800-555-0102 "
+                "to reschedule."
+            ),
+        },
+    )
+    print("  reference document enrolled: cardiology appointment letter (embedded via Cloud SQL/pgvector)")
 
     print(f"\nDone. Life Graph: {MEMORY_URL}/users/{DEMO_USER_ID}/life-graph")
 

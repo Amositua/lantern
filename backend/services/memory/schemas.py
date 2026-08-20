@@ -96,7 +96,9 @@ class DocumentWrite(BaseModel):
     type: str
     uri: str
     extracted_fields: Dict[str, Any] = Field(default_factory=dict)
-    vector_ref: Optional[str] = None
+    text: Optional[str] = Field(
+        None, description="Plain-text content to make this document searchable via RAG. Omit for no embedding."
+    )
 
 
 class PreferenceWrite(BaseModel):

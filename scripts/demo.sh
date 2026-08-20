@@ -118,9 +118,14 @@ cat <<RUNBOOK
       $PYTHON scripts/demo/prove_no_double_charge.py
     simulates a Paystack timeout and shows verify-before-retry keep it
     to a single charge.
+ 7. The document RAG proof (needs CLOUD_SQL_INSTANCE_CONNECTION_NAME set):
+      $PYTHON scripts/demo/prove_document_qa.py
+    asks about the seeded appointment letter, then asks something no
+    document covers -- shows Lantern answer grounded, then refuse to
+    guess rather than invent an answer.
 
- Cloud Console, to show alongside: Firestore, Pub/Sub, and Vertex AI
- for the project in your .env.
+ Cloud Console, to show alongside: Firestore, Pub/Sub, Vertex AI, and
+ Cloud SQL for the project in your .env.
 ======================================================================
 
 RUNBOOK

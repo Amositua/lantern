@@ -16,12 +16,15 @@ class MemoryAgentError(RuntimeError):
         self.status_code = status_code
 
 
-def _request(method: str, path: str, json: Optional[dict] = None) -> Any:
+def _request(method: str, path: str, json: Optional[dict] = None, params: Optional[dict] = None) -> Any:
     base_url = get_settings().memory_url
     url = f"{base_url}{path}"
     try:
-        with httpx.Client(timeout=10.0) as client:
-            resp = client.request(method, url, json=json)
+        # Document search chains a real embedding call plus a Cloud SQL
+        # round-trip -- 10s was tight enough to fail even on a genuinely
+        # successful request.
+        with httpx.Client(timeout=30.0) as client:
+            resp = client.request(method, url, json=json, params=params)
     except httpx.HTTPError as exc:
         logger.warning("memory agent unreachable: %s %s: %s", method, url, exc)
         raise MemoryAgentError(f"could not reach the Memory Agent at {url}: {exc}") from exc
@@ -39,6 +42,10 @@ def _request(method: str, path: str, json: Optional[dict] = None) -> Any:
 
 def create_document(user_id: str, payload: Dict[str, Any]) -> dict:
     return _request("POST", f"/users/{user_id}/documents", json=payload)
+
+
+def search_documents(user_id: str, query: str, top_k: int = 3) -> List[dict]:
+    return _request("GET", f"/users/{user_id}/documents/search", params={"q": query, "top_k": top_k})
 
 
 def create_medication(user_id: str, payload: Dict[str, Any]) -> dict:
