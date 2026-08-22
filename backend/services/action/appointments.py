@@ -1,7 +1,7 @@
 """Appointment actions: propose (read back what's about to change), confirm,
-execute. No payment sits behind this one, unlike reorder.py/bills.py -- so
-there's no risk-scaled confirmation tier to pick, but it's still medical
-and still goes through the same propose-confirm-execute shape rather than
+execute. No payment sits behind this one, unlike reorder.py -- so there's
+no risk-scaled confirmation tier to pick, but it's still medical and
+still goes through the same propose-confirm-execute shape rather than
 acting straight from a voice turn.
 """
 from common import memory_client

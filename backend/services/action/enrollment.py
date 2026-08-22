@@ -13,7 +13,6 @@ from .pharmacy_client import PharmacyError, get_pharmacy_client
 from .schemas import (
     AppointmentImportRequest,
     AppointmentImportResponse,
-    BillImportRequest,
     DocumentImportRequest,
     DocumentImportResponse,
     MedicationExtractRequest,
@@ -23,7 +22,6 @@ from .schemas import (
     PaymentEnrollRequest,
 )
 from .trust_checks import TrustedCircleNotVerified, require_trusted_circle_member
-from .utility_client import UtilityError, get_utility_client
 
 __all__ = ["EnrollmentError", "TrustedCircleNotVerified"]
 
@@ -144,31 +142,6 @@ def import_appointment_from_document(request: AppointmentImportRequest) -> Appoi
         },
     )
     return AppointmentImportResponse(appointment_id=appointment["id"], extracted=extraction)
-
-
-def import_bill_from_statement(request: BillImportRequest) -> dict:
-    """Enrolls a utility bill from the provider's own account statement --
-    tier 2, same reasoning as a pharmacy dispensing record import: the
-    statement is already the trusted source, so no separate human
-    confirmation step is needed."""
-    utility = get_utility_client()
-    try:
-        statement = utility.get_account_statement(request.provider, request.account_ref)
-    except UtilityError as exc:
-        raise EnrollmentError(str(exc)) from exc
-
-    return memory_client.create_bill(
-        request.user_id,
-        {
-            "provider": statement.provider,
-            "category": statement.category,
-            "account_ref": statement.account_ref,
-            "verification": {
-                "method": "account_statement_import",
-                "verified_by": f"{statement.provider} account statement {statement.account_ref}",
-            },
-        },
-    )
 
 
 def enroll_payment(request: PaymentEnrollRequest) -> dict:

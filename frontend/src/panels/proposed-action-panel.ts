@@ -2,21 +2,18 @@ import {
   ActionResult,
   AppointmentProposal,
   AppointmentResult,
-  BillProposal,
-  BillResult,
   ConfirmOptions,
   Proposal,
   ReorderProposal,
   ReorderResult,
   confirmAppointmentAction,
-  confirmBillPayment,
   confirmReorder,
   describeFailure,
 } from "../api";
 import { el } from "../dom";
 
 interface ActionKind {
-  confirmVerb: string; // "Reorder", "Pay bill"
+  confirmVerb: string; // "Reorder", "Confirm"
   confirmingVerb: string; // "Reordering…", "Paying…"
   confirm: (userId: string, caseId: string, confirmed: boolean, options: ConfirmOptions) => Promise<ActionResult>;
   resultLabel: (status: string) => string;
@@ -32,21 +29,6 @@ const REORDER_KIND: ActionKind = {
       executed: "Reordered",
       declined: "Declined",
       aborted_duplicate: "Already reordered",
-      requires_step_up: "Needs a one-time code",
-      requires_trusted_circle: "Needs trusted-circle approval",
-    })[status] ?? status,
-};
-
-const BILL_KIND: ActionKind = {
-  confirmVerb: "Pay bill",
-  confirmingVerb: "Paying…",
-  confirm: (userId, caseId, confirmed, options) =>
-    confirmBillPayment(userId, caseId, confirmed, options) as Promise<BillResult>,
-  resultLabel: (status) =>
-    ({
-      executed: "Paid",
-      declined: "Declined",
-      aborted_already_paid: "Already paid",
       requires_step_up: "Needs a one-time code",
       requires_trusted_circle: "Needs trusted-circle approval",
     })[status] ?? status,
@@ -81,17 +63,13 @@ export class ProposedActionPanel {
     this.container.replaceChildren(
       el("p", {
         className: "empty-state",
-        text: 'Nothing proposed right now. Choose "Reorder" next to a medication, or "Pay" next to a bill, to start one.',
+        text: 'Nothing proposed right now. Choose "Reorder" next to a medication, or "Confirm" next to an appointment, to start one.',
       }),
     );
   }
 
   showReorderProposal(proposal: ReorderProposal): void {
     this.showProposal(proposal, REORDER_KIND);
-  }
-
-  showBillProposal(proposal: BillProposal): void {
-    this.showProposal(proposal, BILL_KIND);
   }
 
   showAppointmentProposal(proposal: AppointmentProposal): void {

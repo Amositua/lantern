@@ -88,22 +88,6 @@ def update_medication(user_id: str, med_id: str, payload: Dict[str, Any]) -> dic
     return _request("PATCH", f"/users/{user_id}/medications/{med_id}", json=payload)
 
 
-def create_bill(user_id: str, payload: Dict[str, Any]) -> dict:
-    return _request("POST", f"/users/{user_id}/bills", json=payload)
-
-
-def get_bill(user_id: str, bill_id: str) -> dict:
-    return _request("GET", f"/users/{user_id}/bills/{bill_id}")
-
-
-def list_bills(user_id: str) -> List[dict]:
-    return _request("GET", f"/users/{user_id}/bills")
-
-
-def update_bill(user_id: str, bill_id: str, payload: Dict[str, Any]) -> dict:
-    return _request("PATCH", f"/users/{user_id}/bills/{bill_id}", json=payload)
-
-
 def create_appointment(user_id: str, payload: Dict[str, Any]) -> dict:
     return _request("POST", f"/users/{user_id}/appointments", json=payload)
 

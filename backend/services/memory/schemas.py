@@ -59,36 +59,6 @@ class MedicationPatch(BaseModel):
     verification: Optional[MedicationVerification] = None
 
 
-class BillVerification(BaseModel):
-    # same deal as MedicationVerification -- checks presence, not that the
-    # statement/account lookup actually happened
-
-    model_config = ConfigDict(extra="forbid")
-
-    method: Literal["account_statement_import", "trusted_circle_verified"]
-    verified_by: str
-    verified_at: Optional[datetime] = None
-
-
-class BillCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    provider: str
-    category: str
-    account_ref: str
-    verification: BillVerification
-
-
-class BillPatch(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    provider: Optional[str] = None
-    account_ref: Optional[str] = None
-    last_paid: Optional[datetime] = None
-    discontinued: Optional[bool] = None
-    verification: Optional[BillVerification] = None
-
-
 class AppointmentVerification(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -133,32 +133,23 @@ a second attempt — an already-succeeded charge is returned as-is, never repeat
 declined, blocked on step-up, blocked on trusted-circle, aborted as a duplicate, executed, or
 failed — writes one `audit` record.
 
-### A second and third domain: utility bills and appointments
+### A second domain: appointments
 
-`backend/services/action/bills.py` proves the propose-confirm-execute + payment gate generalizes
-past medication. It's structurally the same shape as `reorder.py` — read back provider, account,
-and amount; risk-scale the confirmation; charge with verify-before-retry — and it's not a second
-copy of that logic: `billing.py` holds `determine_required_confirmation` and
-`charge_with_verify_before_retry` once, shared by both domains, so the one piece of code where a
-divergence would mean a real double-charge only exists in one place. `enrollment.py`'s
-`import_bill_from_statement` enrolls a bill from the provider's own account statement, tier 2 like
-a dispensing-record import. The "already paid" guard (`bills.py`'s `_is_recently_paid`) mirrors
-`reorder.py`'s duplicate-order check, re-evaluated fresh at confirm time the same way.
-
-`backend/services/action/appointments.py` is a third domain with a different risk shape: no
-payment sits behind confirming, rescheduling, or cancelling an appointment, so there's no cap to
-risk-scale against — every appointment action is `required_confirmation: "simple"` by design, kept
-on the response so the dashboard's one Proposed Action panel doesn't need a special case for it.
-It's still medical, so it still goes through the same propose (read back what's about to change) →
-confirm → execute shape rather than acting straight from a voice turn. Appointments get enrolled
-via `enrollment.import_appointment_from_document`: Gemini Pro (`gemini_extraction.extract_appointment_fields`)
-extracts provider/purpose/time/location from a letter's already-transcribed text (the same text
-RAG already made searchable — no second image read needed), tier `document_import` since the
-letter is the trusted source, the same reasoning a dispensing record uses for medications.
-
-Both domains reuse the pharmacy rail's own pattern for their external sandbox/live split —
-`utility_client.py` and `clinic_client.py` are structurally identical to `pharmacy_client.py`, one
-interface with a `Sandbox*Client` fixture and a `Live*Client` behind the same real config switch.
+`backend/services/action/appointments.py` proves the propose-confirm-execute gate generalizes past
+medication, staying inside the same health-admin thesis rather than wandering into it. It has a
+different risk shape than a reorder: no payment sits behind confirming, rescheduling, or cancelling
+an appointment, so there's no cap to risk-scale against — every appointment action is
+`required_confirmation: "simple"` by design, kept on the response so the dashboard's one Proposed
+Action panel doesn't need a special case for it. It's still medical, so it still goes through the
+same propose (read back what's about to change) → confirm → execute shape rather than acting
+straight from a voice turn. Appointments get enrolled via
+`enrollment.import_appointment_from_document`: Gemini Pro
+(`gemini_extraction.extract_appointment_fields`) extracts provider/purpose/time/location from a
+letter's already-transcribed text (the same text RAG already made searchable — no second image
+read needed), tier `document_import` since the letter is the trusted source, the same reasoning a
+dispensing record uses for medications. `clinic_client.py` reuses the pharmacy rail's own pattern
+for its external sandbox/live split — structurally identical to `pharmacy_client.py`, one interface
+with a `SandboxClinicClient` fixture and a `LiveClinicClient` behind the same real config switch.
 
 ### Delivery tracking (Pub/Sub)
 
@@ -396,12 +387,12 @@ real Gemini Live connection (no Vertex AI project configured in this environment
 Vite multi-page build (`vite.config.ts`'s `build.rollupOptions.input`) — not a route inside the
 main SPA, because it's meant to be opened by someone who isn't the elder using the main dashboard,
 on their own device. It reads the same user's cases (`GET /users/{id}/cases`) and surfaces exactly
-two things: a `medication_reorder` or `utility_bill_payment` case sitting in `proposed` state with
+two things: a `medication_reorder` case sitting in `proposed` state with
 `required_confirmation: "trusted_circle"`, and a `medication_reengagement` case that's
 `escalated_to_trusted_circle` after repeated unanswered nudges (pointed at the reorder case it last
 proposed, via `data.reorder_case_id`). The page asks the trusted contact to type their own name and
-calls the exact same `/reorder/confirm` or `/bills/confirm` endpoints the main dashboard uses —
-there's no separate, weaker approval path. `require_trusted_circle_member` checks the name against
+calls the exact same `/reorder/confirm` endpoint the main dashboard uses — there's no separate,
+weaker approval path. `require_trusted_circle_member` checks the name against
 the user's own recorded `people` server-side, so a wrong name is genuinely rejected by Action, not
 just hidden by the companion page's own UI.
 
@@ -477,12 +468,12 @@ What `scripts/demo/` contains:
   pip install of their own to run.
 - `reset_demo_user.py` — clears the demo user's Firestore records and pgvector rows before
   `seed_demo_user.py` writes fresh ones, so repeated runs against a real project stay reproducible
-  instead of leaving duplicate medications/bills/appointments for guards like the reorder cadence
-  check to trip over on the wrong record.
-- `seed_demo_user.py` — seeds a profile, a trusted-circle person, a medication and a utility bill
-  (both via the provider's own tier-2 records), a tokenized payment method, a reference letter
-  (embedded into Cloud SQL/pgvector — needs `CLOUD_SQL_INSTANCE_CONNECTION_NAME` set), and an
-  appointment extracted from that letter by Gemini.
+  instead of leaving duplicate medications/appointments for guards like the reorder cadence check
+  to trip over on the wrong record.
+- `seed_demo_user.py` — seeds a profile, a trusted-circle person, a medication (via the pharmacy's
+  own tier-2 dispensing record), a tokenized payment method, a reference letter (embedded into
+  Cloud SQL/pgvector — needs `CLOUD_SQL_INSTANCE_CONNECTION_NAME` set), and an appointment
+  extracted from that letter by Gemini.
 - `prove_stale_abort.py` — the stale-reorder abort, live: records when a refill check was
   scheduled, changes the medication's dose behind the scenes through the normal verified-write
   path, then fires the re-engagement event with the *original* schedule time. Lantern re-reads
@@ -496,9 +487,9 @@ What `scripts/demo/` contains:
 - `prove_crisis_handoff.py` — proposes a reorder, sends a crisis utterance against that case, and
   shows Safety Router veto it and hand off to a real trusted contact; confirming the vetoed case
   afterward is genuinely refused, not just reported as halted.
-- `prove_bill_payment.py` / `prove_appointment_confirm.py` — the same propose-confirm-execute gate
-  proven against two more domains: a utility bill payment (sharing the reorder's payment/
-  risk-scaling logic via `billing.py`) and an appointment confirmation with no payment involved.
+- `prove_appointment_confirm.py` — the same propose-confirm-execute gate proven against a second
+  domain: an appointment confirmation, extracted from the enrolled letter by Gemini, with no
+  payment involved.
 - `simulate_delivery.py` — places a real order, then steps it through preparing, out for delivery,
   and delivered, each landing as its own activity-log entry and each best-effort published to
   Pub/Sub.
@@ -510,7 +501,6 @@ Run the proofs from a second terminal while `demo.sh` is up:
 .venv/Scripts/python scripts/demo/prove_no_double_charge.py
 .venv/Scripts/python scripts/demo/prove_document_qa.py
 .venv/Scripts/python scripts/demo/prove_crisis_handoff.py
-.venv/Scripts/python scripts/demo/prove_bill_payment.py
 .venv/Scripts/python scripts/demo/prove_appointment_confirm.py
 .venv/Scripts/python scripts/demo/simulate_delivery.py
 ```
@@ -547,7 +537,6 @@ variable a service reads is defined in `backend/common/config.py`:
 | `CLOUD_SQL_DATABASE`, `CLOUD_SQL_USER`, `CLOUD_SQL_PASSWORD` | Cloud SQL credentials |
 | `PUBSUB_TOPIC_PREFIX` | prefix applied to every Pub/Sub topic Lantern creates |
 | `PHARMACY_AGGREGATOR_BASE_URL`, `PHARMACY_AGGREGATOR_API_KEY` | pharmacy rail credentials |
-| `UTILITY_AGGREGATOR_BASE_URL`, `UTILITY_AGGREGATOR_API_KEY` | utility biller credentials (`bills.py`) |
 | `CLINIC_AGGREGATOR_BASE_URL`, `CLINIC_AGGREGATOR_API_KEY` | clinic scheduling credentials (`appointments.py`) |
 | `PAYSTACK_SECRET_KEY` | Paystack secret key — server-side only, never sent to the client |
 | `NATIONAL_EMERGENCY_NUMBER` | Safety Router's handoff fallback, defaults to Nigeria's 112 |

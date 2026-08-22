@@ -127,12 +127,11 @@ cat <<RUNBOOK
       $PYTHON scripts/demo/prove_crisis_handoff.py
     a crisis phrase halts an in-progress reorder and hands off to a real
     trusted contact instead of a guess.
- 9. Two more domains through the same propose-confirm-execute gate:
-      $PYTHON scripts/demo/prove_bill_payment.py
+ 9. The appointment domain, same propose-confirm-execute gate, no
+    payment behind it:
       $PYTHON scripts/demo/prove_appointment_confirm.py
-    a utility bill payment (reusing the reorder's payment/risk-scaling
-    machinery) and an appointment confirmation extracted by Gemini from
-    the enrolled letter, with nothing paid or booked until confirmed.
+    confirms an appointment extracted by Gemini from the enrolled
+    letter, with nothing booked until confirmed.
 10. Delivery tracking, live over Pub/Sub:
       $PYTHON scripts/demo/simulate_delivery.py
     places an order, then steps it through preparing -> out for delivery
@@ -140,7 +139,7 @@ cat <<RUNBOOK
 11. Trusted-circle companion page -- open companion.html (same dev
     server, e.g. http://localhost:5173/companion.html) on a second
     device or tab: anything routed to a trusted-circle approval (a
-    large charge, or an unanswered nudge escalated after repeats) shows
+    large reorder, or an unanswered nudge escalated after repeats) shows
     up there, gated by the same trust check the main dashboard uses --
     a wrong name is really rejected, not just hidden in the UI.
 

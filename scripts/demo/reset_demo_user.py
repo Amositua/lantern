@@ -17,7 +17,6 @@ from _client import DEMO_USER_ID
 
 FIRESTORE_SUBCOLLECTIONS = (
     "medications",
-    "bills",
     "appointments",
     "people",
     "documents",

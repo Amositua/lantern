@@ -9,8 +9,6 @@ class FakeMemoryStore:
         self,
         medication=None,
         medications=None,
-        bill=None,
-        bills=None,
         appointment=None,
         appointments=None,
         payment=None,
@@ -22,11 +20,6 @@ class FakeMemoryStore:
         if medication:
             seeded.append(medication)
         self.medications = {m["id"]: dict(m) for m in seeded}
-
-        seeded_bills = list(bills or [])
-        if bill:
-            seeded_bills.append(bill)
-        self.bills = {b["id"]: dict(b) for b in seeded_bills}
 
         seeded_appointments = list(appointments or [])
         if appointment:
@@ -49,16 +42,6 @@ class FakeMemoryStore:
     def update_medication(self, user_id, med_id, payload):
         self.medications[med_id].update(payload)
         return dict(self.medications[med_id])
-
-    def get_bill(self, user_id, bill_id):
-        return dict(self.bills[bill_id])
-
-    def list_bills(self, user_id):
-        return [dict(b) for b in self.bills.values()]
-
-    def update_bill(self, user_id, bill_id, payload):
-        self.bills[bill_id].update(payload)
-        return dict(self.bills[bill_id])
 
     def get_appointment(self, user_id, appointment_id):
         return dict(self.appointments[appointment_id])

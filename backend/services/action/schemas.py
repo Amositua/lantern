@@ -92,14 +92,6 @@ class AppointmentImportResponse(BaseModel):
     extracted: AppointmentExtraction
 
 
-class BillImportRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    user_id: str
-    provider: str
-    account_ref: str
-
-
 class DocumentImportRequest(BaseModel):
     # letters/labels -- reference material, not a Life Graph identity fact,
     # so unlike the medication paths above this needs no verification block

@@ -1,7 +1,7 @@
 """Proves the appointment domain end to end: an appointment that came from
 a real Gemini extraction over the enrolled letter (see seed_demo_user.py)
 gets confirmed through the same propose-confirm-execute shape as a
-reorder or a bill payment -- just without a charge behind it.
+medication reorder -- just without a charge behind it.
 """
 from _client import ACTION_URL, DEMO_USER_ID, MEMORY_URL, call
 

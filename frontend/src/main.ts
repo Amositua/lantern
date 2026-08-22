@@ -1,5 +1,5 @@
 import "./style.css";
-import { Appointment, Bill, Medication, describeFailure, proposeAppointmentAction, proposeBillPayment, proposeReorder } from "./api";
+import { Appointment, Medication, describeFailure, proposeAppointmentAction, proposeReorder } from "./api";
 import { AudioPlaybackQueue } from "./audio-playback";
 import { startCamera, startFrameCapture, startMicCapture } from "./media";
 import { AuditPanel } from "./panels/audit-panel";
@@ -98,7 +98,6 @@ function wireUp(): void {
     lifeGraphBody,
     USER_ID,
     (medication: Medication) => void requestReorder(medication),
-    (bill: Bill) => void requestBillPay(bill),
     (appointment: Appointment) => void requestAppointmentConfirm(appointment),
   );
 
@@ -129,21 +128,6 @@ function wireUp(): void {
         "propose reorder failed",
         error,
         `Lantern couldn't check on ${medication.name} right now. Try again in a moment.`,
-      );
-    }
-  };
-
-  const requestBillPay = async (bill: Bill): Promise<void> => {
-    showChecking(`${bill.provider} bill`);
-    try {
-      const proposal = await proposeBillPayment(USER_ID, bill.id);
-      proposedActionPanel.showBillProposal(proposal);
-      proposedActionBody.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    } catch (error) {
-      showProposeFailure(
-        "propose bill payment failed",
-        error,
-        `Lantern couldn't check on your ${bill.provider} bill right now. Try again in a moment.`,
       );
     }
   };

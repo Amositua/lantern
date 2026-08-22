@@ -1,7 +1,7 @@
 """Clinic/scheduling rail behind an interface, same shape as
-pharmacy_client.py and utility_client.py -- a sandbox implementation so
-rescheduling and cancelling both work without a live key. No payment
-involved here, unlike the other two rails.
+pharmacy_client.py -- a sandbox implementation so rescheduling and
+cancelling both work without a live key. No payment involved here,
+unlike the pharmacy rail.
 """
 import abc
 import uuid

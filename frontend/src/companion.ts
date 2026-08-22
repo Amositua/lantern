@@ -1,12 +1,11 @@
 import "./style.css";
-import { Case, confirmBillPayment, confirmReorder, describeFailure, fetchCases } from "./api";
+import { Case, confirmReorder, describeFailure, fetchCases } from "./api";
 import { el } from "./dom";
 
 const USER_ID = (import.meta.env.VITE_DEMO_USER_ID as string | undefined) ?? "demo-user";
 
 interface PendingItem {
   case_id: string;
-  task: "medication_reorder" | "utility_bill_payment";
   summary: string;
 }
 
@@ -97,10 +96,7 @@ function render(cases: Case[], nameInput: HTMLInputElement, body: HTMLDivElement
       statusLine.textContent = "";
       try {
         const confirmedBy = nameInput.value.trim() || "Trusted circle";
-        const result =
-          item.task === "medication_reorder"
-            ? await confirmReorder(USER_ID, item.case_id, confirmed, { confirmedBy })
-            : await confirmBillPayment(USER_ID, item.case_id, confirmed, { confirmedBy });
+        const result = await confirmReorder(USER_ID, item.case_id, confirmed, { confirmedBy });
         statusLine.textContent = result.message;
         if (result.status === "executed" || result.status === "declined") {
           await refresh();
@@ -128,12 +124,8 @@ function pendingItems(cases: Case[]): PendingItem[] {
   const items: PendingItem[] = [];
 
   for (const c of cases) {
-    if (
-      (c.task === "medication_reorder" || c.task === "utility_bill_payment") &&
-      c.state === "proposed" &&
-      c.data.required_confirmation === "trusted_circle"
-    ) {
-      items.push({ case_id: c.id, task: c.task, summary: summarize(c) });
+    if (c.task === "medication_reorder" && c.state === "proposed" && c.data.required_confirmation === "trusted_circle") {
+      items.push({ case_id: c.id, summary: summarize(c) });
     }
   }
 
@@ -145,8 +137,7 @@ function pendingItems(cases: Case[]): PendingItem[] {
       if (reorderCaseId && !items.some((item) => item.case_id === reorderCaseId)) {
         items.push({
           case_id: reorderCaseId,
-          task: "medication_reorder",
-          summary: `A refill reminder went unanswered a few times and was escalated to you.`,
+          summary: "A refill reminder went unanswered a few times and was escalated to you.",
         });
       }
     }
@@ -158,8 +149,5 @@ function pendingItems(cases: Case[]): PendingItem[] {
 function summarize(c: Case): string {
   const amountKobo = c.data.amount_kobo as number | undefined;
   const amount = amountKobo != null ? `₦${(amountKobo / 100).toLocaleString()}` : "an amount";
-  if (c.task === "medication_reorder") {
-    return `Medication reorder from ${String(c.data.pharmacy_ref ?? "the pharmacy")} -- ${amount}.`;
-  }
-  return `${String(c.data.provider ?? "A")} bill, account ${String(c.data.account_ref ?? "on file")} -- ${amount}.`;
+  return `Medication reorder from ${String(c.data.pharmacy_ref ?? "the pharmacy")} -- ${amount}.`;
 }

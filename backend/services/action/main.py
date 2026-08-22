@@ -12,21 +12,19 @@ from common.health import run_checks
 from common.logging_utils import get_logger
 from common.memory_client import MemoryAgentError
 
-from . import appointments, bills, delivery, enrollment, reengagement, reorder
-from .delivery_schemas import DeliveryStatusEvent, DeliveryStatusResult
+from . import appointments, delivery, enrollment, reengagement, reorder
 from .appointments_schemas import (
     AppointmentConfirmRequest,
     AppointmentProposal,
     AppointmentProposeRequest,
     AppointmentResult,
 )
-from .bills_schemas import BillConfirmRequest, BillProposal, BillProposeRequest, BillResult
+from .delivery_schemas import DeliveryStatusEvent, DeliveryStatusResult
 from .reengagement_schemas import ReengagementFireRequest, ReengagementResult
 from .reorder_schemas import ReorderConfirmRequest, ReorderProposal, ReorderProposeRequest, ReorderResult
 from .schemas import (
     AppointmentImportRequest,
     AppointmentImportResponse,
-    BillImportRequest,
     DocumentImportRequest,
     DocumentImportResponse,
     MedicationExtractRequest,
@@ -60,16 +58,6 @@ async def _handle_duplicate_order(request: Request, exc: reorder.DuplicateOrderE
 
 @app.exception_handler(reorder.ReorderError)
 async def _handle_reorder_error(request: Request, exc: reorder.ReorderError):
-    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": str(exc)})
-
-
-@app.exception_handler(bills.AlreadyPaidError)
-async def _handle_already_paid(request: Request, exc: bills.AlreadyPaidError):
-    return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"detail": str(exc)})
-
-
-@app.exception_handler(bills.BillPaymentError)
-async def _handle_bill_payment_error(request: Request, exc: bills.BillPaymentError):
     return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": str(exc)})
 
 
@@ -160,16 +148,6 @@ def import_appointment(payload: AppointmentImportRequest) -> AppointmentImportRe
     return enrollment.import_appointment_from_document(payload)
 
 
-# ------------------------------------------------------- utility bill enrollment --
-
-
-@app.post("/enrollment/bills/import-from-statement", status_code=status.HTTP_201_CREATED)
-def import_bill(payload: BillImportRequest) -> dict:
-    """Enrolls a utility bill straight from the provider's own account
-    statement -- no separate human confirmation step needed."""
-    return enrollment.import_bill_from_statement(payload)
-
-
 # --------------------------------------------------------- medication reorder --
 
 
@@ -186,24 +164,6 @@ def confirm_reorder(payload: ReorderConfirmRequest) -> ReorderResult:
     created, the risk-scaled confirmation requirement is met, and the
     duplicate-order guard passes on a fresh read right before charging."""
     return reorder.resolve_reorder(payload)
-
-
-# ------------------------------------------------------------ utility bill payment --
-
-
-@app.post("/bills/propose")
-def propose_bill(payload: BillProposeRequest) -> BillProposal:
-    """Reads back provider + account + amount + card. Writes nothing except
-    the case itself -- no charge happens until /confirm is called against it."""
-    return bills.propose_bill_payment(payload)
-
-
-@app.post("/bills/confirm")
-def confirm_bill(payload: BillConfirmRequest) -> BillResult:
-    """Executes only if confirmed=True against a case /propose actually
-    created, the risk-scaled confirmation requirement is met, and the
-    already-paid guard passes on a fresh read right before charging."""
-    return bills.resolve_bill_payment(payload)
 
 
 # -------------------------------------------------------------- appointment action --

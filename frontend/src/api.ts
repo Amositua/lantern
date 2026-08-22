@@ -28,15 +28,6 @@ export interface PaymentSummary {
   last_confirmed?: string | null;
 }
 
-export interface Bill {
-  id: string;
-  provider: string;
-  category: string;
-  account_ref: string;
-  last_paid?: string | null;
-  discontinued?: boolean;
-}
-
 export interface Appointment {
   id: string;
   provider: string;
@@ -84,7 +75,6 @@ export interface LifeGraphSummary {
     pacing_pref?: string | null;
   };
   medications: Medication[];
-  bills: Bill[];
   appointments: Appointment[];
   people: Person[];
   payment: PaymentSummary | null;
@@ -114,25 +104,6 @@ export interface ReorderResult {
   charge_reference?: string | null;
 }
 
-export interface BillProposal {
-  case_id: string;
-  bill_id: string;
-  provider: string;
-  category: string;
-  account_ref: string;
-  amount_kobo: number;
-  card_description: string;
-  required_confirmation: "simple" | "step_up" | "trusted_circle";
-  idempotency_key: string;
-  read_back: string;
-}
-
-export interface BillResult {
-  status: "executed" | "declined" | "aborted_already_paid" | "requires_step_up" | "requires_trusted_circle";
-  message: string;
-  payment_reference?: string | null;
-}
-
 export interface AppointmentProposal {
   case_id: string;
   appointment_id: string;
@@ -148,9 +119,9 @@ export interface AppointmentResult {
   confirmation_ref?: string | null;
 }
 
-/** The shape the Proposed Action panel actually needs -- a ReorderProposal,
- * a BillProposal, and an AppointmentProposal all already satisfy this, so
- * the panel doesn't need to know which domain it's confirming. */
+/** The shape the Proposed Action panel actually needs -- both a
+ * ReorderProposal and an AppointmentProposal already satisfy this, so the
+ * panel doesn't need to know which domain it's confirming. */
 export interface Proposal {
   case_id: string;
   required_confirmation: "simple" | "step_up" | "trusted_circle";
@@ -238,31 +209,6 @@ export function confirmReorder(
   options: ConfirmOptions = {},
 ): Promise<ReorderResult> {
   return request(`${ACTION_URL}/reorder/confirm`, {
-    method: "POST",
-    body: JSON.stringify({
-      user_id: userId,
-      case_id: caseId,
-      confirmed,
-      confirmed_by: options.confirmedBy ?? "user",
-      step_up_token: options.stepUpToken,
-    }),
-  });
-}
-
-export function proposeBillPayment(userId: string, billId: string): Promise<BillProposal> {
-  return request(`${ACTION_URL}/bills/propose`, {
-    method: "POST",
-    body: JSON.stringify({ user_id: userId, bill_id: billId }),
-  });
-}
-
-export function confirmBillPayment(
-  userId: string,
-  caseId: string,
-  confirmed: boolean,
-  options: ConfirmOptions = {},
-): Promise<BillResult> {
-  return request(`${ACTION_URL}/bills/confirm`, {
     method: "POST",
     body: JSON.stringify({
       user_id: userId,

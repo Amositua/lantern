@@ -17,8 +17,6 @@ from .schemas import (
     AppointmentCreate,
     AppointmentPatch,
     AuditWrite,
-    BillCreate,
-    BillPatch,
     CasePatch,
     CaseWrite,
     DocumentWrite,
@@ -138,63 +136,6 @@ def get_medication(user_id: str, med_id: str, db=None) -> dict:
 def list_medications(user_id: str, db=None) -> List[dict]:
     db = _db(db)
     return [{"id": d.id, **d.to_dict()} for d in _user_ref(db, user_id).collection("medications").stream()]
-
-
-# ------------------------------------------------------------------ bills --
-
-
-def create_bill(user_id: str, bill: BillCreate, db=None) -> dict:
-    db = _db(db)
-    bill_ref = _user_ref(db, user_id).collection("bills").document()
-    ts = now()
-    doc = {
-        "provider": bill.provider,
-        "category": bill.category,
-        "account_ref": bill.account_ref,
-        "last_paid": None,
-        "verification": bill.verification.model_dump(mode="json"),
-        "created_at": ts,
-        "last_confirmed": ts,
-    }
-    bill_ref.set(doc)
-    return {"id": bill_ref.id, **doc}
-
-
-def update_bill(user_id: str, bill_id: str, patch: BillPatch, db=None) -> dict:
-    db = _db(db)
-    bill_ref = _user_ref(db, user_id).collection("bills").document(bill_id)
-    snapshot = bill_ref.get()
-    if not snapshot.exists:
-        raise NotFound(f"bill {bill_id} not found")
-
-    touches_identity = patch.provider is not None or patch.account_ref is not None or patch.discontinued is not None
-    if touches_identity and patch.verification is None:
-        raise TrustViolation(
-            "changing a bill's provider, account reference, or discontinued status requires a "
-            "verification block — re-enter the trusted-enrollment path (account-statement or "
-            "trusted-circle verification)"
-        )
-
-    updates: Dict[str, Any] = patch.model_dump(exclude_unset=True, exclude={"verification"})
-    updates["last_confirmed"] = now()
-    if patch.verification is not None:
-        updates["verification"] = patch.verification.model_dump(mode="json")
-
-    bill_ref.update(updates)
-    return {"id": bill_id, **bill_ref.get().to_dict()}
-
-
-def get_bill(user_id: str, bill_id: str, db=None) -> dict:
-    db = _db(db)
-    snapshot = _user_ref(db, user_id).collection("bills").document(bill_id).get()
-    if not snapshot.exists:
-        raise NotFound(f"bill {bill_id} not found")
-    return {"id": bill_id, **snapshot.to_dict()}
-
-
-def list_bills(user_id: str, db=None) -> List[dict]:
-    db = _db(db)
-    return [{"id": d.id, **d.to_dict()} for d in _user_ref(db, user_id).collection("bills").stream()]
 
 
 # ------------------------------------------------------------ appointments --
@@ -575,7 +516,6 @@ def get_belief_summary(user_id: str, db=None) -> dict:
             "pacing_pref": user_data.get("pacing_pref"),
         },
         "medications": list_medications(user_id, db=db),
-        "bills": list_bills(user_id, db=db),
         "appointments": list_appointments(user_id, db=db),
         "people": list_people(user_id, db=db),
         "payment": payment_summary,
