@@ -31,6 +31,22 @@ def get_genai_client():
 
 
 @lru_cache
+def get_genai_live_client():
+    """Separate client for the Live API -- it needs a real region and 404s
+    against the global endpoint the rest of Gemini serves from."""
+    from google import genai
+
+    settings = get_settings()
+    if not settings.gcp_project_id:
+        raise ClientInitError("GCP_PROJECT_ID is not set; cannot init the Vertex AI GenAI client")
+    return genai.Client(
+        vertexai=True,
+        project=settings.gcp_project_id,
+        location=settings.gemini_live_location,
+    )
+
+
+@lru_cache
 def get_pubsub_publisher():
     from google.cloud import pubsub_v1
 

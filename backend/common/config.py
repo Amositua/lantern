@@ -16,11 +16,20 @@ class Settings(BaseSettings):
     # now, not regional ones -- this is separate from gcp_region, which still
     # governs Cloud Run/Firestore/everything else.
     vertex_location: str = "global"
+    # The Live API is the opposite: it 404s against the global endpoint and
+    # needs an actual region. Kept separate from vertex_location rather than
+    # forcing one location to serve both.
+    gemini_live_location: str = "us-central1"
     gemini_flash_model: str = "gemini-3.5-flash"
     # No 3.5 Pro model exists yet; 3.1-pro-preview is the same generation's
     # Pro tier and what's actually available.
     gemini_pro_model: str = "gemini-3.1-pro-preview"
     gemini_embedding_model: str = "gemini-embedding-001"
+    # The bidi Live API is served by its own model family, separate from the
+    # regular generate_content lineup -- gemini-3.5-flash rejects a live.connect
+    # outright ("not supported in the live api"). This is the live-capable
+    # model actually listed for this project.
+    gemini_live_model: str = "gemini-live-2.5-flash-native-audio"
 
     firestore_database: str = "(default)"
 

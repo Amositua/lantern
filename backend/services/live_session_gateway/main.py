@@ -7,7 +7,7 @@ from typing import Optional
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from common.config import get_settings
-from common.gcp_clients import ClientInitError, get_genai_client
+from common.gcp_clients import ClientInitError, get_genai_client, get_genai_live_client
 from common.health import run_checks
 from common.logging_utils import get_logger
 
@@ -48,7 +48,7 @@ def health() -> dict:
 
 @app.get("/health/deep")
 def health_deep() -> dict:
-    checks = run_checks({"vertex_genai": get_genai_client})
+    checks = run_checks({"vertex_genai": get_genai_client, "vertex_genai_live": get_genai_live_client})
     return {"service": "live_session_gateway", "checks": checks}
 
 

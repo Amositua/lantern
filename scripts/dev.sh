@@ -6,6 +6,16 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 REPO_ROOT="$(pwd)"
 
+# Services run with backend/ as their cwd, so pydantic-settings' own
+# relative env_file=".env" lookup can't find the one at the repo root --
+# without this, every GCP_* setting silently falls back to unset instead
+# of failing loudly, and things like the Live API just hang.
+if [ -f .env ]; then
+  set -a
+  source .env
+  set +a
+fi
+
 # Windows ships a `python3` PATH entry that's really a Microsoft Store
 # redirect stub, not an interpreter -- actually invoking each candidate is
 # the only reliable check.

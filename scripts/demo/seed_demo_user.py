@@ -7,9 +7,11 @@ retrieve). Run once against a real backend (needs GCP_PROJECT_ID and
 CLOUD_SQL_INSTANCE_CONNECTION_NAME configured) before recording the demo.
 """
 from _client import ACTION_URL, DEMO_USER_ID, MEMORY_URL, call
+from reset_demo_user import reset_demo_user
 
 
 def main() -> None:
+    reset_demo_user()
     print(f"Seeding {DEMO_USER_ID} ...")
 
     call(

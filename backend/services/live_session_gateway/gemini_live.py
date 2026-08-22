@@ -6,7 +6,7 @@ everything else runs against the fake in tests/.
 from typing import AsyncIterator
 
 from common.config import get_settings
-from common.gcp_clients import get_genai_client
+from common.gcp_clients import get_genai_live_client
 
 from .live_session import LiveModelSession, LiveServerEvent
 
@@ -61,7 +61,7 @@ async def open_gemini_live_session() -> LiveModelSession:
     from google.genai import types
 
     settings = get_settings()
-    client = get_genai_client()
+    client = get_genai_live_client()
 
     config = types.LiveConnectConfig(
         response_modalities=["AUDIO"],
@@ -74,6 +74,6 @@ async def open_gemini_live_session() -> LiveModelSession:
         ),
     )
 
-    live_connect = client.aio.live.connect(model=settings.gemini_flash_model, config=config)
+    live_connect = client.aio.live.connect(model=settings.gemini_live_model, config=config)
     genai_session = await live_connect.__aenter__()
     return GeminiLiveModelSession(live_connect, genai_session)
