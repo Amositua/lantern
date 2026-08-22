@@ -122,8 +122,19 @@ gcloud run deploy lantern-dashboard \
 dashboard_url="$(gcloud run services describe lantern-dashboard --project "${GCP_PROJECT_ID}" --region "${GCP_REGION}" --format='value(status.url)')"
 echo "    dashboard -> ${dashboard_url}"
 
+# Cloud Run serves one deployed service under two valid hostnames -- the
+# hash-based one gcloud reports back (captured above) and a project-
+# number-qualified one it doesn't report structurally but that resolves
+# to the exact same revision. Allowing only one as DASHBOARD_ORIGIN means
+# a browser on the other one gets a real CORS failure, not a cosmetic one.
+project_number="$(gcloud projects describe "${GCP_PROJECT_ID}" --format='value(projectNumber)')"
+dashboard_url_alt="https://lantern-dashboard-${project_number}.${GCP_REGION}.run.app"
+
 echo "==> pass 2: point every service at its real peers and the dashboard's real origin"
-peer_env="ORCHESTRATOR_URL=${SERVICE_URL[orchestrator]},PERCEPTION_URL=${SERVICE_URL[perception]},CLARIFIER_URL=${SERVICE_URL[clarifier]},ACTION_URL=${SERVICE_URL[action]},SAFETY_ROUTER_URL=${SERVICE_URL[safety-router]},MEMORY_URL=${SERVICE_URL[memory]},LIVE_SESSION_GATEWAY_URL=${SERVICE_URL[live-session-gateway]},DASHBOARD_ORIGIN=${dashboard_url}"
+# a comma inside DASHBOARD_ORIGIN's own value would collide with
+# --update-env-vars' default comma-separated KEY=VALUE parsing, so this
+# uses gcloud's custom-delimiter syntax (^;^) instead
+peer_env="^;^ORCHESTRATOR_URL=${SERVICE_URL[orchestrator]};PERCEPTION_URL=${SERVICE_URL[perception]};CLARIFIER_URL=${SERVICE_URL[clarifier]};ACTION_URL=${SERVICE_URL[action]};SAFETY_ROUTER_URL=${SERVICE_URL[safety-router]};MEMORY_URL=${SERVICE_URL[memory]};LIVE_SESSION_GATEWAY_URL=${SERVICE_URL[live-session-gateway]};DASHBOARD_ORIGIN=${dashboard_url},${dashboard_url_alt}"
 for entry in "${SERVICES[@]}"; do
   name="${entry%%:*}"
   gcloud run services update "lantern-${name}" \
