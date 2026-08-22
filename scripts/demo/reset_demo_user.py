@@ -15,7 +15,17 @@ import os
 
 from _client import DEMO_USER_ID
 
-FIRESTORE_SUBCOLLECTIONS = ("medications", "people", "documents", "preferences", "resolution_events", "cases", "audit")
+FIRESTORE_SUBCOLLECTIONS = (
+    "medications",
+    "bills",
+    "appointments",
+    "people",
+    "documents",
+    "preferences",
+    "resolution_events",
+    "cases",
+    "audit",
+)
 
 
 def _reset_firestore(project_id: str) -> None:

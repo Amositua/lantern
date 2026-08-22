@@ -19,6 +19,7 @@ if hasattr(sys.stdout, "reconfigure"):
 MEMORY_URL = os.environ.get("MEMORY_URL", "http://localhost:8085")
 ACTION_URL = os.environ.get("ACTION_URL", "http://localhost:8083")
 CLARIFIER_URL = os.environ.get("CLARIFIER_URL", "http://localhost:8082")
+SAFETY_ROUTER_URL = os.environ.get("SAFETY_ROUTER_URL", "http://localhost:8084")
 DEMO_USER_ID = os.environ.get("DEMO_USER_ID", "demo-user")
 
 

@@ -12,10 +12,21 @@ from common.health import run_checks
 from common.logging_utils import get_logger
 from common.memory_client import MemoryAgentError
 
-from . import enrollment, reengagement, reorder
+from . import appointments, bills, delivery, enrollment, reengagement, reorder
+from .delivery_schemas import DeliveryStatusEvent, DeliveryStatusResult
+from .appointments_schemas import (
+    AppointmentConfirmRequest,
+    AppointmentProposal,
+    AppointmentProposeRequest,
+    AppointmentResult,
+)
+from .bills_schemas import BillConfirmRequest, BillProposal, BillProposeRequest, BillResult
 from .reengagement_schemas import ReengagementFireRequest, ReengagementResult
 from .reorder_schemas import ReorderConfirmRequest, ReorderProposal, ReorderProposeRequest, ReorderResult
 from .schemas import (
+    AppointmentImportRequest,
+    AppointmentImportResponse,
+    BillImportRequest,
     DocumentImportRequest,
     DocumentImportResponse,
     MedicationExtractRequest,
@@ -49,6 +60,26 @@ async def _handle_duplicate_order(request: Request, exc: reorder.DuplicateOrderE
 
 @app.exception_handler(reorder.ReorderError)
 async def _handle_reorder_error(request: Request, exc: reorder.ReorderError):
+    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": str(exc)})
+
+
+@app.exception_handler(bills.AlreadyPaidError)
+async def _handle_already_paid(request: Request, exc: bills.AlreadyPaidError):
+    return JSONResponse(status_code=status.HTTP_409_CONFLICT, content={"detail": str(exc)})
+
+
+@app.exception_handler(bills.BillPaymentError)
+async def _handle_bill_payment_error(request: Request, exc: bills.BillPaymentError):
+    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": str(exc)})
+
+
+@app.exception_handler(appointments.AppointmentActionError)
+async def _handle_appointment_action_error(request: Request, exc: appointments.AppointmentActionError):
+    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": str(exc)})
+
+
+@app.exception_handler(delivery.DeliveryError)
+async def _handle_delivery_error(request: Request, exc: delivery.DeliveryError):
     return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": str(exc)})
 
 
@@ -118,6 +149,27 @@ def enroll_payment(payload: PaymentEnrollRequest) -> dict:
     return enrollment.enroll_payment(payload)
 
 
+# ---------------------------------------------------------- appointment enrollment --
+
+
+@app.post("/enrollment/appointments/import-from-document", status_code=status.HTTP_201_CREATED)
+def import_appointment(payload: AppointmentImportRequest) -> AppointmentImportResponse:
+    """Derives an appointment record from a letter already enrolled via
+    /enrollment/documents/import -- writes nothing if there's no
+    appointment actually described in the text."""
+    return enrollment.import_appointment_from_document(payload)
+
+
+# ------------------------------------------------------- utility bill enrollment --
+
+
+@app.post("/enrollment/bills/import-from-statement", status_code=status.HTTP_201_CREATED)
+def import_bill(payload: BillImportRequest) -> dict:
+    """Enrolls a utility bill straight from the provider's own account
+    statement -- no separate human confirmation step needed."""
+    return enrollment.import_bill_from_statement(payload)
+
+
 # --------------------------------------------------------- medication reorder --
 
 
@@ -134,6 +186,51 @@ def confirm_reorder(payload: ReorderConfirmRequest) -> ReorderResult:
     created, the risk-scaled confirmation requirement is met, and the
     duplicate-order guard passes on a fresh read right before charging."""
     return reorder.resolve_reorder(payload)
+
+
+# ------------------------------------------------------------ utility bill payment --
+
+
+@app.post("/bills/propose")
+def propose_bill(payload: BillProposeRequest) -> BillProposal:
+    """Reads back provider + account + amount + card. Writes nothing except
+    the case itself -- no charge happens until /confirm is called against it."""
+    return bills.propose_bill_payment(payload)
+
+
+@app.post("/bills/confirm")
+def confirm_bill(payload: BillConfirmRequest) -> BillResult:
+    """Executes only if confirmed=True against a case /propose actually
+    created, the risk-scaled confirmation requirement is met, and the
+    already-paid guard passes on a fresh read right before charging."""
+    return bills.resolve_bill_payment(payload)
+
+
+# -------------------------------------------------------------- appointment action --
+
+
+@app.post("/appointments/propose")
+def propose_appointment(payload: AppointmentProposeRequest) -> AppointmentProposal:
+    """Reads back what's about to change -- confirm attendance, reschedule,
+    or cancel. No charge involved, but still nothing happens until /confirm."""
+    return appointments.propose_appointment_action(payload)
+
+
+@app.post("/appointments/confirm")
+def confirm_appointment(payload: AppointmentConfirmRequest) -> AppointmentResult:
+    """Executes only if confirmed=True against a case /propose actually created."""
+    return appointments.resolve_appointment_action(payload)
+
+
+# ------------------------------------------------------------ delivery tracking --
+
+
+@app.post("/delivery/status")
+def delivery_status(payload: DeliveryStatusEvent) -> DeliveryStatusResult:
+    """Stands in for a courier's own status webhook -- records progress
+    against the reorder case and the audit log. Never re-triggers
+    propose-confirm; delivery is narration, not a new action."""
+    return delivery.record_delivery_status(payload)
 
 
 # ------------------------------------------------------- async re-engagement --

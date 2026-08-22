@@ -1,5 +1,5 @@
 import "./style.css";
-import { Medication, describeFailure, proposeReorder } from "./api";
+import { Appointment, Bill, Medication, describeFailure, proposeAppointmentAction, proposeBillPayment, proposeReorder } from "./api";
 import { AudioPlaybackQueue } from "./audio-playback";
 import { startCamera, startFrameCapture, startMicCapture } from "./media";
 import { AuditPanel } from "./panels/audit-panel";
@@ -94,31 +94,72 @@ function wireUp(): void {
 
   const proposedActionPanel = new ProposedActionPanel(proposedActionBody, USER_ID, refreshBelief);
   const auditPanel = new AuditPanel(auditBody, USER_ID);
-  const lifeGraphPanel = new LifeGraphPanel(lifeGraphBody, USER_ID, (medication: Medication) => {
-    void requestReorder(medication);
-  });
+  const lifeGraphPanel = new LifeGraphPanel(
+    lifeGraphBody,
+    USER_ID,
+    (medication: Medication) => void requestReorder(medication),
+    (bill: Bill) => void requestBillPay(bill),
+    (appointment: Appointment) => void requestAppointmentConfirm(appointment),
+  );
 
-  const requestReorder = async (medication: Medication): Promise<void> => {
+  const showChecking = (label: string) => {
     proposedActionBody.replaceChildren();
     const loading = document.createElement("p");
     loading.className = "empty-state";
-    loading.textContent = `Checking your ${medication.name}…`;
+    loading.textContent = `Checking your ${label}…`;
     proposedActionBody.appendChild(loading);
+  };
 
+  const showProposeFailure = (context: string, error: unknown, friendly: string) => {
+    const text = describeFailure(context, error, friendly);
+    const message = document.createElement("p");
+    message.className = "empty-state";
+    message.textContent = text;
+    proposedActionBody.replaceChildren(message);
+  };
+
+  const requestReorder = async (medication: Medication): Promise<void> => {
+    showChecking(medication.name);
     try {
       const proposal = await proposeReorder(USER_ID, medication.id);
-      proposedActionPanel.showProposal(proposal);
+      proposedActionPanel.showReorderProposal(proposal);
       proposedActionBody.scrollIntoView({ behavior: "smooth", block: "nearest" });
     } catch (error) {
-      const text = describeFailure(
+      showProposeFailure(
         "propose reorder failed",
         error,
         `Lantern couldn't check on ${medication.name} right now. Try again in a moment.`,
       );
-      const message = document.createElement("p");
-      message.className = "empty-state";
-      message.textContent = text;
-      proposedActionBody.replaceChildren(message);
+    }
+  };
+
+  const requestBillPay = async (bill: Bill): Promise<void> => {
+    showChecking(`${bill.provider} bill`);
+    try {
+      const proposal = await proposeBillPayment(USER_ID, bill.id);
+      proposedActionPanel.showBillProposal(proposal);
+      proposedActionBody.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (error) {
+      showProposeFailure(
+        "propose bill payment failed",
+        error,
+        `Lantern couldn't check on your ${bill.provider} bill right now. Try again in a moment.`,
+      );
+    }
+  };
+
+  const requestAppointmentConfirm = async (appointment: Appointment): Promise<void> => {
+    showChecking(`${appointment.provider} appointment`);
+    try {
+      const proposal = await proposeAppointmentAction(USER_ID, appointment.id, "confirm_attendance");
+      proposedActionPanel.showAppointmentProposal(proposal);
+      proposedActionBody.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (error) {
+      showProposeFailure(
+        "propose appointment action failed",
+        error,
+        `Lantern couldn't check on your ${appointment.provider} appointment right now. Try again in a moment.`,
+      );
     }
   };
 

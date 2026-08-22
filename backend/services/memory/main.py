@@ -12,7 +12,11 @@ from common.logging_utils import get_logger
 from . import life_graph as lg
 from .clients import get_cloud_sql_engine, get_firestore_client
 from .schemas import (
+    AppointmentCreate,
+    AppointmentPatch,
     AuditWrite,
+    BillCreate,
+    BillPatch,
     CasePatch,
     CaseWrite,
     DocumentWrite,
@@ -98,6 +102,52 @@ def get_medication(user_id: str, med_id: str) -> dict:
 @app.patch("/users/{user_id}/medications/{med_id}")
 def patch_medication(user_id: str, med_id: str, payload: MedicationPatch) -> dict:
     return lg.update_medication(user_id, med_id, payload)
+
+
+# ------------------------------------------------------------------ bills --
+
+
+@app.get("/users/{user_id}/bills")
+def list_bills(user_id: str) -> List[dict]:
+    return lg.list_bills(user_id)
+
+
+@app.post("/users/{user_id}/bills", status_code=status.HTTP_201_CREATED)
+def create_bill(user_id: str, payload: BillCreate) -> dict:
+    return lg.create_bill(user_id, payload)
+
+
+@app.get("/users/{user_id}/bills/{bill_id}")
+def get_bill(user_id: str, bill_id: str) -> dict:
+    return lg.get_bill(user_id, bill_id)
+
+
+@app.patch("/users/{user_id}/bills/{bill_id}")
+def patch_bill(user_id: str, bill_id: str, payload: BillPatch) -> dict:
+    return lg.update_bill(user_id, bill_id, payload)
+
+
+# ------------------------------------------------------------ appointments --
+
+
+@app.get("/users/{user_id}/appointments")
+def list_appointments(user_id: str) -> List[dict]:
+    return lg.list_appointments(user_id)
+
+
+@app.post("/users/{user_id}/appointments", status_code=status.HTTP_201_CREATED)
+def create_appointment(user_id: str, payload: AppointmentCreate) -> dict:
+    return lg.create_appointment(user_id, payload)
+
+
+@app.get("/users/{user_id}/appointments/{appointment_id}")
+def get_appointment(user_id: str, appointment_id: str) -> dict:
+    return lg.get_appointment(user_id, appointment_id)
+
+
+@app.patch("/users/{user_id}/appointments/{appointment_id}")
+def patch_appointment(user_id: str, appointment_id: str, payload: AppointmentPatch) -> dict:
+    return lg.update_appointment(user_id, appointment_id, payload)
 
 
 # ------------------------------------------------------------------ people --

@@ -17,6 +17,7 @@ from common import memory_client
 from common.logging_utils import get_logger
 
 from . import reorder
+from .billing import parse_datetime
 from .reengagement_schemas import ReengagementFireRequest, ReengagementResult
 from .reorder_schemas import ReorderProposeRequest
 
@@ -145,7 +146,7 @@ def _close_case(user_id: str, case: Optional[dict]) -> None:
 
 
 def _rx_changed_since(medication: dict, scheduled_at: datetime) -> bool:
-    last_confirmed = reorder._parse_datetime(medication.get("last_confirmed"))
+    last_confirmed = parse_datetime(medication.get("last_confirmed"))
     if last_confirmed is None:
         return False
     return last_confirmed > scheduled_at
@@ -179,7 +180,7 @@ def _other_due_med_names(user_id: str, med_id: str) -> List[str]:
 
 
 def _is_due(medication: dict) -> bool:
-    last_refill = reorder._parse_datetime(medication.get("last_refill"))
+    last_refill = parse_datetime(medication.get("last_refill"))
     cadence = medication.get("cadence")
     if last_refill is None or not cadence:
         return False

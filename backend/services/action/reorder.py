@@ -3,18 +3,15 @@ confirm (risk-scaled), execute. Every branch writes an audit record and
 nothing runs without confirmed=True against a case propose actually made.
 """
 from datetime import datetime, timezone
-from typing import Literal, Optional
 
 from common import memory_client
 
-from .paystack_client import PaystackError, PaystackTimeoutError, get_paystack_client
+from .billing import charge_with_verify_before_retry, determine_required_confirmation, format_naira, parse_datetime
+from .delivery import publish_delivery_started
+from .paystack_client import PaystackError, get_paystack_client
 from .pharmacy_client import get_pharmacy_client
 from .reorder_schemas import ReorderConfirmRequest, ReorderProposal, ReorderProposeRequest, ReorderResult
 from .trust_checks import TrustedCircleNotVerified, require_trusted_circle_member
-
-# above this multiple of the per-transaction cap, step-up auth isn't
-# enough -- a trusted-circle contact has to approve it instead
-TRUSTED_CIRCLE_CAP_MULTIPLIER = 2
 
 
 class ReorderError(RuntimeError):
@@ -38,7 +35,7 @@ def propose_reorder(request: ReorderProposeRequest) -> ReorderProposal:
     amount_kobo = pharmacy.get_refill_price(medication["pharmacy_ref"], medication["name"], medication["dose"])
 
     has_prior_order = _has_prior_successful_reorder(request.user_id, request.med_id)
-    required_confirmation = determine_required_confirmation(amount_kobo, payment, medication, has_prior_order)
+    required_confirmation = determine_required_confirmation(amount_kobo, payment, medication.get("condition"), has_prior_order)
 
     case = memory_client.create_case(
         request.user_id,
@@ -59,7 +56,7 @@ def propose_reorder(request: ReorderProposeRequest) -> ReorderProposal:
     read_back = (
         f"That's your {medication['name']}, {medication['dose']}"
         + (f", for {medication['condition']}" if medication.get("condition") else "")
-        + f" -- reorder a month's supply for {_format_naira(amount_kobo)} from {medication['pharmacy_ref']}, "
+        + f" -- reorder a month's supply for {format_naira(amount_kobo)} from {medication['pharmacy_ref']}, "
         + f"paid with {card}. Shall I?"
     )
 
@@ -124,7 +121,7 @@ def resolve_reorder(request: ReorderConfirmRequest) -> ReorderResult:
     paystack = get_paystack_client()
     email = f"user+{request.user_id}@lantern.local"
     try:
-        charge = _charge_with_verify_before_retry(paystack, payment["method_ref"], amount_kobo, email, idempotency_key)
+        charge = charge_with_verify_before_retry(paystack, payment["method_ref"], amount_kobo, email, idempotency_key)
     except PaystackError as exc:
         memory_client.update_case(request.user_id, case["id"], {"state": "failed"})
         _write_audit(request.user_id, data, request.confirmed_by, required_confirmation, f"failed: {exc}", idempotency_key)
@@ -134,6 +131,8 @@ def resolve_reorder(request: ReorderConfirmRequest) -> ReorderResult:
     memory_client.update_case(request.user_id, case["id"], {"state": "executed"})
     _write_audit(request.user_id, data, request.confirmed_by, required_confirmation, "success", idempotency_key)
 
+    publish_delivery_started(request.user_id, case["id"], order.order_id)
+
     return ReorderResult(
         status="executed",
         message=f"Done -- {medication['name']} is on its way, arriving in {order.eta}.",
@@ -142,40 +141,12 @@ def resolve_reorder(request: ReorderConfirmRequest) -> ReorderResult:
     )
 
 
-def determine_required_confirmation(
-    amount_kobo: int, payment: dict, medication: dict, has_prior_order: bool
-) -> Literal["simple", "step_up", "trusted_circle"]:
-    per_transaction_cap_kobo = _naira_to_kobo(payment.get("per_transaction_cap"))
-    never_auto = {c.lower() for c in payment.get("never_auto_categories", [])}
-    condition = (medication.get("condition") or "").lower()
-
-    if per_transaction_cap_kobo is not None and amount_kobo > per_transaction_cap_kobo * TRUSTED_CIRCLE_CAP_MULTIPLIER:
-        return "trusted_circle"
-    if condition in never_auto:
-        return "step_up"
-    if per_transaction_cap_kobo is not None and amount_kobo > per_transaction_cap_kobo:
-        return "step_up"
-    if not has_prior_order:
-        return "step_up"
-    return "simple"
-
-
-def _charge_with_verify_before_retry(paystack, authorization_code: str, amount_kobo: int, email: str, idempotency_key: str):
-    try:
-        return paystack.charge_authorization(authorization_code, amount_kobo, email, idempotency_key)
-    except PaystackTimeoutError:
-        existing = paystack.verify_charge(idempotency_key)
-        if existing is not None and existing.status == "success":
-            return existing
-        return paystack.charge_authorization(authorization_code, amount_kobo, email, idempotency_key)
-
-
 def _is_duplicate(medication: dict) -> bool:
     last_refill = medication.get("last_refill")
     cadence = medication.get("cadence")
     if not last_refill or not cadence:
         return False
-    last_refill_at = _parse_datetime(last_refill)
+    last_refill_at = parse_datetime(last_refill)
     if last_refill_at is None:
         return False
     return (datetime.now(timezone.utc) - last_refill_at).days < cadence
@@ -218,23 +189,6 @@ def _card_description(payment: dict) -> str:
         bank = f"{payment['card_bank']} " if payment.get("card_bank") else ""
         return f"your {bank}card ending in {payment['card_last4']}"
     return "your card on file"
-
-
-def _format_naira(amount_kobo: int) -> str:
-    return f"₦{amount_kobo / 100:,.0f}"
-
-
-def _naira_to_kobo(amount_naira: Optional[float]) -> Optional[int]:
-    return None if amount_naira is None else int(amount_naira * 100)
-
-
-def _parse_datetime(value) -> Optional[datetime]:
-    if isinstance(value, datetime):
-        return value
-    try:
-        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-    except ValueError:
-        return None
 
 
 def _now_iso() -> str:

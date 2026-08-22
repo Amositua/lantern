@@ -454,3 +454,22 @@ button:disabled {
   font-size: 0.85rem;
   color: var(--text-muted);
 }
+
+/* ------------------------------------------------------------ companion -- */
+
+.companion-dashboard {
+  grid-template-columns: 1fr;
+  max-width: 40rem;
+  margin: 0 auto;
+}
+
+.companion-item {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.companion-actions {
+  display: flex;
+  gap: 0.5rem;
+}

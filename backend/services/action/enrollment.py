@@ -7,10 +7,13 @@ from typing import Optional
 
 from common import memory_client
 
-from .gemini_extraction import extract_prescription_fields, transcribe_document
+from .gemini_extraction import extract_appointment_fields, extract_prescription_fields, transcribe_document
 from .paystack_client import PaystackError, get_paystack_client
 from .pharmacy_client import PharmacyError, get_pharmacy_client
 from .schemas import (
+    AppointmentImportRequest,
+    AppointmentImportResponse,
+    BillImportRequest,
     DocumentImportRequest,
     DocumentImportResponse,
     MedicationExtractRequest,
@@ -20,6 +23,7 @@ from .schemas import (
     PaymentEnrollRequest,
 )
 from .trust_checks import TrustedCircleNotVerified, require_trusted_circle_member
+from .utility_client import UtilityError, get_utility_client
 
 __all__ = ["EnrollmentError", "TrustedCircleNotVerified"]
 
@@ -108,6 +112,60 @@ def import_medication_from_dispensing_record(request: MedicationImportRequest) -
                 "method": "dispensing_record_import",
                 "verified_by": f"{record.pharmacy_ref} dispensing record {request.dispensing_record_id}",
                 "rx_ref": record.rx_ref,
+            },
+        },
+    )
+
+
+def import_appointment_from_document(request: AppointmentImportRequest) -> AppointmentImportResponse:
+    """Derives an appointment record from a letter already enrolled via
+    /enrollment/documents/import. Lower stakes than a medication identity
+    fact -- no drug safety or payment risk sits behind it -- so the
+    letter's own already-stored text is trusted evidence enough, the same
+    way a dispensing record is for medications."""
+    document = memory_client.get_document(request.user_id, request.document_id)
+    text = document.get("text") or ""
+    if not text:
+        raise EnrollmentError(f"document {request.document_id} has no transcribed text to extract from")
+
+    extraction = extract_appointment_fields(text)
+    if not extraction.provider:
+        raise EnrollmentError("could not find an appointment in that document")
+
+    appointment = memory_client.create_appointment(
+        request.user_id,
+        {
+            "provider": extraction.provider,
+            "purpose": extraction.purpose,
+            "scheduled_for": extraction.scheduled_for,
+            "location": extraction.location,
+            "source_document_id": request.document_id,
+            "verification": {"method": "document_import", "verified_by": f"document {request.document_id}"},
+        },
+    )
+    return AppointmentImportResponse(appointment_id=appointment["id"], extracted=extraction)
+
+
+def import_bill_from_statement(request: BillImportRequest) -> dict:
+    """Enrolls a utility bill from the provider's own account statement --
+    tier 2, same reasoning as a pharmacy dispensing record import: the
+    statement is already the trusted source, so no separate human
+    confirmation step is needed."""
+    utility = get_utility_client()
+    try:
+        statement = utility.get_account_statement(request.provider, request.account_ref)
+    except UtilityError as exc:
+        raise EnrollmentError(str(exc)) from exc
+
+    return memory_client.create_bill(
+        request.user_id,
+        {
+            "provider": statement.provider,
+            "category": statement.category,
+            "account_ref": statement.account_ref,
+            "verification": {
+                "method": "account_statement_import",
+                "verified_by": f"{statement.provider} account statement {statement.account_ref}",
             },
         },
     )

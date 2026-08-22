@@ -59,6 +59,66 @@ class MedicationPatch(BaseModel):
     verification: Optional[MedicationVerification] = None
 
 
+class BillVerification(BaseModel):
+    # same deal as MedicationVerification -- checks presence, not that the
+    # statement/account lookup actually happened
+
+    model_config = ConfigDict(extra="forbid")
+
+    method: Literal["account_statement_import", "trusted_circle_verified"]
+    verified_by: str
+    verified_at: Optional[datetime] = None
+
+
+class BillCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str
+    category: str
+    account_ref: str
+    verification: BillVerification
+
+
+class BillPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Optional[str] = None
+    account_ref: Optional[str] = None
+    last_paid: Optional[datetime] = None
+    discontinued: Optional[bool] = None
+    verification: Optional[BillVerification] = None
+
+
+class AppointmentVerification(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    method: Literal["document_import", "clinic_verified", "trusted_circle_verified"]
+    verified_by: str
+    verified_at: Optional[datetime] = None
+
+
+class AppointmentCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: str
+    purpose: Optional[str] = None
+    scheduled_for: Optional[str] = None  # free-text on purpose -- a letter says "Thursday the 14th at 10:30am", not an ISO timestamp
+    location: Optional[str] = None
+    source_document_id: Optional[str] = None
+    verification: AppointmentVerification
+
+
+class AppointmentPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider: Optional[str] = None
+    scheduled_for: Optional[str] = None
+    location: Optional[str] = None
+    status: Optional[str] = None
+    cancelled: Optional[bool] = None
+    verification: Optional[AppointmentVerification] = None
+
+
 class PersonWrite(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

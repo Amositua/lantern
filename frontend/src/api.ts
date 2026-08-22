@@ -28,6 +28,25 @@ export interface PaymentSummary {
   last_confirmed?: string | null;
 }
 
+export interface Bill {
+  id: string;
+  provider: string;
+  category: string;
+  account_ref: string;
+  last_paid?: string | null;
+  discontinued?: boolean;
+}
+
+export interface Appointment {
+  id: string;
+  provider: string;
+  purpose?: string | null;
+  scheduled_for?: string | null;
+  location?: string | null;
+  status: string;
+  cancelled?: boolean;
+}
+
 export interface Preference {
   id: string;
   domain: string;
@@ -65,6 +84,8 @@ export interface LifeGraphSummary {
     pacing_pref?: string | null;
   };
   medications: Medication[];
+  bills: Bill[];
+  appointments: Appointment[];
   people: Person[];
   payment: PaymentSummary | null;
   preferences: Preference[];
@@ -91,6 +112,61 @@ export interface ReorderResult {
   message: string;
   order_id?: string | null;
   charge_reference?: string | null;
+}
+
+export interface BillProposal {
+  case_id: string;
+  bill_id: string;
+  provider: string;
+  category: string;
+  account_ref: string;
+  amount_kobo: number;
+  card_description: string;
+  required_confirmation: "simple" | "step_up" | "trusted_circle";
+  idempotency_key: string;
+  read_back: string;
+}
+
+export interface BillResult {
+  status: "executed" | "declined" | "aborted_already_paid" | "requires_step_up" | "requires_trusted_circle";
+  message: string;
+  payment_reference?: string | null;
+}
+
+export interface AppointmentProposal {
+  case_id: string;
+  appointment_id: string;
+  provider: string;
+  intent: "confirm_attendance" | "reschedule" | "cancel";
+  read_back: string;
+  required_confirmation: "simple";
+}
+
+export interface AppointmentResult {
+  status: "executed" | "declined";
+  message: string;
+  confirmation_ref?: string | null;
+}
+
+/** The shape the Proposed Action panel actually needs -- a ReorderProposal,
+ * a BillProposal, and an AppointmentProposal all already satisfy this, so
+ * the panel doesn't need to know which domain it's confirming. */
+export interface Proposal {
+  case_id: string;
+  required_confirmation: "simple" | "step_up" | "trusted_circle";
+  read_back: string;
+}
+
+export interface ActionResult {
+  status: string;
+  message: string;
+}
+
+export interface Case {
+  id: string;
+  task: string;
+  state: string;
+  data: Record<string, unknown>;
 }
 
 export class ApiError extends Error {}
@@ -139,6 +215,10 @@ export function fetchAudit(userId: string, limit = 20): Promise<AuditEntry[]> {
   return request(`${MEMORY_URL}/users/${userId}/audit?limit=${limit}`);
 }
 
+export function fetchCases(userId: string): Promise<Case[]> {
+  return request(`${MEMORY_URL}/users/${userId}/cases`);
+}
+
 export function proposeReorder(userId: string, medId: string): Promise<ReorderProposal> {
   return request(`${ACTION_URL}/reorder/propose`, {
     method: "POST",
@@ -166,5 +246,49 @@ export function confirmReorder(
       confirmed_by: options.confirmedBy ?? "user",
       step_up_token: options.stepUpToken,
     }),
+  });
+}
+
+export function proposeBillPayment(userId: string, billId: string): Promise<BillProposal> {
+  return request(`${ACTION_URL}/bills/propose`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, bill_id: billId }),
+  });
+}
+
+export function confirmBillPayment(
+  userId: string,
+  caseId: string,
+  confirmed: boolean,
+  options: ConfirmOptions = {},
+): Promise<BillResult> {
+  return request(`${ACTION_URL}/bills/confirm`, {
+    method: "POST",
+    body: JSON.stringify({
+      user_id: userId,
+      case_id: caseId,
+      confirmed,
+      confirmed_by: options.confirmedBy ?? "user",
+      step_up_token: options.stepUpToken,
+    }),
+  });
+}
+
+export function proposeAppointmentAction(
+  userId: string,
+  appointmentId: string,
+  intent: "confirm_attendance" | "reschedule" | "cancel",
+  newTime?: string,
+): Promise<AppointmentProposal> {
+  return request(`${ACTION_URL}/appointments/propose`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, appointment_id: appointmentId, intent, new_time: newTime }),
+  });
+}
+
+export function confirmAppointmentAction(userId: string, caseId: string, confirmed: boolean): Promise<AppointmentResult> {
+  return request(`${ACTION_URL}/appointments/confirm`, {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, case_id: caseId, confirmed, confirmed_by: "user" }),
   });
 }

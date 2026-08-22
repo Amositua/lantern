@@ -133,6 +133,47 @@ a second attempt — an already-succeeded charge is returned as-is, never repeat
 declined, blocked on step-up, blocked on trusted-circle, aborted as a duplicate, executed, or
 failed — writes one `audit` record.
 
+### A second and third domain: utility bills and appointments
+
+`backend/services/action/bills.py` proves the propose-confirm-execute + payment gate generalizes
+past medication. It's structurally the same shape as `reorder.py` — read back provider, account,
+and amount; risk-scale the confirmation; charge with verify-before-retry — and it's not a second
+copy of that logic: `billing.py` holds `determine_required_confirmation` and
+`charge_with_verify_before_retry` once, shared by both domains, so the one piece of code where a
+divergence would mean a real double-charge only exists in one place. `enrollment.py`'s
+`import_bill_from_statement` enrolls a bill from the provider's own account statement, tier 2 like
+a dispensing-record import. The "already paid" guard (`bills.py`'s `_is_recently_paid`) mirrors
+`reorder.py`'s duplicate-order check, re-evaluated fresh at confirm time the same way.
+
+`backend/services/action/appointments.py` is a third domain with a different risk shape: no
+payment sits behind confirming, rescheduling, or cancelling an appointment, so there's no cap to
+risk-scale against — every appointment action is `required_confirmation: "simple"` by design, kept
+on the response so the dashboard's one Proposed Action panel doesn't need a special case for it.
+It's still medical, so it still goes through the same propose (read back what's about to change) →
+confirm → execute shape rather than acting straight from a voice turn. Appointments get enrolled
+via `enrollment.import_appointment_from_document`: Gemini Pro (`gemini_extraction.extract_appointment_fields`)
+extracts provider/purpose/time/location from a letter's already-transcribed text (the same text
+RAG already made searchable — no second image read needed), tier `document_import` since the
+letter is the trusted source, the same reasoning a dispensing record uses for medications.
+
+Both domains reuse the pharmacy rail's own pattern for their external sandbox/live split —
+`utility_client.py` and `clinic_client.py` are structurally identical to `pharmacy_client.py`, one
+interface with a `Sandbox*Client` fixture and a `Live*Client` behind the same real config switch.
+
+### Delivery tracking (Pub/Sub)
+
+`backend/services/action/delivery.py` is the second thing Pub/Sub actually does, beyond
+re-engagement. A successful reorder calls `publish_delivery_started`, a best-effort publish to a
+`delivery-status` topic — same "never block the real flow over this" reasoning as
+`reengagement.publish_refill_due_event`. `POST /delivery/status` stands in for a courier's own
+status webhook (`scripts/demo/simulate_delivery.py` calls it directly, the way a real courier
+integration would call it from outside): each update merges into the case's own `data` — Firestore
+`update()` replaces a nested map field wholesale, so the handler reads the case first and merges in
+Python rather than clobbering whatever was already there — and writes its own `audit` entry, so
+`preparing` → `out_for_delivery` → `delivered` each show up as their own line in the activity log.
+It only narrates a reorder that's already executed; it can't be pointed at a case that never
+completed propose-confirm-execute.
+
 ### Async re-engagement — the stale-reorder abort
 
 `backend/services/action/reengagement.py` is the other safety proof: a Pub/Sub event means
@@ -265,7 +306,9 @@ of `proposed` state, and Action's own confirm-time check (a case has to still be
 execute) refuses it from there — one state machine, enforced the same way no matter who's asking.
 `test_safety_router.py` proves this isn't just an assertion about Safety Router's own return
 value: it proposes a real reorder, vetoes it, and confirms `reorder.resolve_reorder` genuinely
-raises rather than executing.
+raises rather than executing. `scripts/demo/prove_crisis_handoff.py` is the live version of the
+same proof: propose a reorder, send a crisis utterance against that `case_id`, and confirm the
+vetoed case really can't be confirmed afterward — not just that Safety Router said `halt`.
 
 ### Live Session Gateway
 
@@ -347,6 +390,21 @@ headless Chromium session (Playwright) driving the actual dev server against the
 not just a type-check. What that session can't exercise here: an actual camera/microphone, and a
 real Gemini Live connection (no Vertex AI project configured in this environment).
 
+### Trusted-circle companion page
+
+`frontend/companion.html` (`src/companion.ts`) is a second, separate entry point built for a
+Vite multi-page build (`vite.config.ts`'s `build.rollupOptions.input`) — not a route inside the
+main SPA, because it's meant to be opened by someone who isn't the elder using the main dashboard,
+on their own device. It reads the same user's cases (`GET /users/{id}/cases`) and surfaces exactly
+two things: a `medication_reorder` or `utility_bill_payment` case sitting in `proposed` state with
+`required_confirmation: "trusted_circle"`, and a `medication_reengagement` case that's
+`escalated_to_trusted_circle` after repeated unanswered nudges (pointed at the reorder case it last
+proposed, via `data.reorder_case_id`). The page asks the trusted contact to type their own name and
+calls the exact same `/reorder/confirm` or `/bills/confirm` endpoints the main dashboard uses —
+there's no separate, weaker approval path. `require_trusted_circle_member` checks the name against
+the user's own recorded `people` server-side, so a wrong name is genuinely rejected by Action, not
+just hidden by the companion page's own UI.
+
 ## Stack
 
 | Requirement | Where |
@@ -417,9 +475,14 @@ What `scripts/demo/` contains:
 
 - `_client.py` — a tiny stdlib-only HTTP helper the other scripts share, so none of them need a
   pip install of their own to run.
-- `seed_demo_user.py` — seeds a profile, a trusted-circle person, a medication (via dispensing-
-  record import, so it's already tier-2 trusted), a tokenized payment method, and a reference
-  letter (embedded into Cloud SQL/pgvector — needs `CLOUD_SQL_INSTANCE_CONNECTION_NAME` set).
+- `reset_demo_user.py` — clears the demo user's Firestore records and pgvector rows before
+  `seed_demo_user.py` writes fresh ones, so repeated runs against a real project stay reproducible
+  instead of leaving duplicate medications/bills/appointments for guards like the reorder cadence
+  check to trip over on the wrong record.
+- `seed_demo_user.py` — seeds a profile, a trusted-circle person, a medication and a utility bill
+  (both via the provider's own tier-2 records), a tokenized payment method, a reference letter
+  (embedded into Cloud SQL/pgvector — needs `CLOUD_SQL_INSTANCE_CONNECTION_NAME` set), and an
+  appointment extracted from that letter by Gemini.
 - `prove_stale_abort.py` — the stale-reorder abort, live: records when a refill check was
   scheduled, changes the medication's dose behind the scenes through the normal verified-write
   path, then fires the re-engagement event with the *original* schedule time. Lantern re-reads
@@ -430,21 +493,38 @@ What `scripts/demo/` contains:
 - `prove_document_qa.py` — asks a question the seeded letter actually answers, then one nothing on
   file covers. The first comes back grounded with a source; the second comes back a plain "not in
   your documents" rather than an answer invented from Gemini's general knowledge.
+- `prove_crisis_handoff.py` — proposes a reorder, sends a crisis utterance against that case, and
+  shows Safety Router veto it and hand off to a real trusted contact; confirming the vetoed case
+  afterward is genuinely refused, not just reported as halted.
+- `prove_bill_payment.py` / `prove_appointment_confirm.py` — the same propose-confirm-execute gate
+  proven against two more domains: a utility bill payment (sharing the reorder's payment/
+  risk-scaling logic via `billing.py`) and an appointment confirmation with no payment involved.
+- `simulate_delivery.py` — places a real order, then steps it through preparing, out for delivery,
+  and delivered, each landing as its own activity-log entry and each best-effort published to
+  Pub/Sub.
 
-Run the three proofs from a second terminal while `demo.sh` is up:
+Run the proofs from a second terminal while `demo.sh` is up:
 
 ```bash
 .venv/Scripts/python scripts/demo/prove_stale_abort.py       # .venv/bin/python on macOS/Linux
 .venv/Scripts/python scripts/demo/prove_no_double_charge.py
 .venv/Scripts/python scripts/demo/prove_document_qa.py
+.venv/Scripts/python scripts/demo/prove_crisis_handoff.py
+.venv/Scripts/python scripts/demo/prove_bill_payment.py
+.venv/Scripts/python scripts/demo/prove_appointment_confirm.py
+.venv/Scripts/python scripts/demo/simulate_delivery.py
 ```
+
+The trusted-circle companion page is the same dev server, a different entry point:
+`http://localhost:5173/companion.html`.
 
 ### What to show in the Cloud Console alongside the demo
 
 - **Firestore** — the Life Graph documents under the demo user, updating live as panels refresh.
-- **Pub/Sub** — the re-engagement topic `demo.sh`/`prove_stale_abort.py` publish to.
-- **Vertex AI** — the Gemini calls perception, clarifier, safety router, and prescription
-  extraction make, visible in the project's Vertex AI request logs.
+- **Pub/Sub** — the re-engagement topic `demo.sh`/`prove_stale_abort.py` publish to, and the
+  delivery-status topic `simulate_delivery.py` publishes to.
+- **Vertex AI** — the Gemini calls perception, clarifier, safety router, prescription extraction,
+  and appointment extraction make, visible in the project's Vertex AI request logs.
 - **Cloud SQL** — the `document_embeddings` table, populated by `seed_demo_user.py` and read by
   `prove_document_qa.py`.
 
@@ -461,11 +541,14 @@ variable a service reads is defined in `backend/common/config.py`:
 | `VERTEX_LOCATION` | Vertex AI location for Gemini calls -- `global`, not a region; `gemini-3.5-flash` only serves from there right now |
 | `GEMINI_FLASH_MODEL`, `GEMINI_PRO_MODEL` | model ids used by the GenAI client -- there's no `gemini-3.5-pro` yet, so Pro calls use `gemini-3.1-pro-preview` |
 | `GEMINI_EMBEDDING_MODEL` | embedding model for document RAG (`services/memory/vector_store.py`) |
+| `GEMINI_LIVE_MODEL`, `GEMINI_LIVE_LOCATION` | the Live API's own model family and region -- it 404s against `gemini-3.5-flash` and against the `global` endpoint the rest of Gemini serves from, so it gets a separate client (`get_genai_live_client`) |
 | `FIRESTORE_DATABASE` | Firestore database id (`(default)` unless you've created a named one) |
 | `CLOUD_SQL_INSTANCE_CONNECTION_NAME` | `project:region:instance` for the Cloud SQL connector -- unset, document RAG's ingest/embed/search calls 503 the same way an unconfigured Firestore call does |
 | `CLOUD_SQL_DATABASE`, `CLOUD_SQL_USER`, `CLOUD_SQL_PASSWORD` | Cloud SQL credentials |
 | `PUBSUB_TOPIC_PREFIX` | prefix applied to every Pub/Sub topic Lantern creates |
 | `PHARMACY_AGGREGATOR_BASE_URL`, `PHARMACY_AGGREGATOR_API_KEY` | pharmacy rail credentials |
+| `UTILITY_AGGREGATOR_BASE_URL`, `UTILITY_AGGREGATOR_API_KEY` | utility biller credentials (`bills.py`) |
+| `CLINIC_AGGREGATOR_BASE_URL`, `CLINIC_AGGREGATOR_API_KEY` | clinic scheduling credentials (`appointments.py`) |
 | `PAYSTACK_SECRET_KEY` | Paystack secret key — server-side only, never sent to the client |
 | `NATIONAL_EMERGENCY_NUMBER` | Safety Router's handoff fallback, defaults to Nigeria's 112 |
 | `CRISIS_HOTLINE_NUMBER` | mental-health crisis line for Safety Router's handoff — unset by default, must be a verified real number before deploying |

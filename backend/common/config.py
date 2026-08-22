@@ -42,6 +42,10 @@ class Settings(BaseSettings):
 
     pharmacy_aggregator_base_url: Optional[str] = None
     pharmacy_aggregator_api_key: Optional[str] = None
+    utility_aggregator_base_url: Optional[str] = None
+    utility_aggregator_api_key: Optional[str] = None
+    clinic_aggregator_base_url: Optional[str] = None
+    clinic_aggregator_api_key: Optional[str] = None
     paystack_secret_key: Optional[str] = None
 
     # Nigeria's national emergency number -- stable and well-established,

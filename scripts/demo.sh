@@ -123,6 +123,26 @@ cat <<RUNBOOK
     asks about the seeded appointment letter, then asks something no
     document covers -- shows Lantern answer grounded, then refuse to
     guess rather than invent an answer.
+ 8. The crisis-handoff proof:
+      $PYTHON scripts/demo/prove_crisis_handoff.py
+    a crisis phrase halts an in-progress reorder and hands off to a real
+    trusted contact instead of a guess.
+ 9. Two more domains through the same propose-confirm-execute gate:
+      $PYTHON scripts/demo/prove_bill_payment.py
+      $PYTHON scripts/demo/prove_appointment_confirm.py
+    a utility bill payment (reusing the reorder's payment/risk-scaling
+    machinery) and an appointment confirmation extracted by Gemini from
+    the enrolled letter, with nothing paid or booked until confirmed.
+10. Delivery tracking, live over Pub/Sub:
+      $PYTHON scripts/demo/simulate_delivery.py
+    places an order, then steps it through preparing -> out for delivery
+    -> delivered, each landing as its own activity-log entry.
+11. Trusted-circle companion page -- open companion.html (same dev
+    server, e.g. http://localhost:5173/companion.html) on a second
+    device or tab: anything routed to a trusted-circle approval (a
+    large charge, or an unanswered nudge escalated after repeats) shows
+    up there, gated by the same trust check the main dashboard uses --
+    a wrong name is really rejected, not just hidden in the UI.
 
  Cloud Console, to show alongside: Firestore, Pub/Sub, Vertex AI, and
  Cloud SQL for the project in your .env.

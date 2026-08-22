@@ -88,6 +88,45 @@ def update_medication(user_id: str, med_id: str, payload: Dict[str, Any]) -> dic
     return _request("PATCH", f"/users/{user_id}/medications/{med_id}", json=payload)
 
 
+def create_bill(user_id: str, payload: Dict[str, Any]) -> dict:
+    return _request("POST", f"/users/{user_id}/bills", json=payload)
+
+
+def get_bill(user_id: str, bill_id: str) -> dict:
+    return _request("GET", f"/users/{user_id}/bills/{bill_id}")
+
+
+def list_bills(user_id: str) -> List[dict]:
+    return _request("GET", f"/users/{user_id}/bills")
+
+
+def update_bill(user_id: str, bill_id: str, payload: Dict[str, Any]) -> dict:
+    return _request("PATCH", f"/users/{user_id}/bills/{bill_id}", json=payload)
+
+
+def create_appointment(user_id: str, payload: Dict[str, Any]) -> dict:
+    return _request("POST", f"/users/{user_id}/appointments", json=payload)
+
+
+def get_appointment(user_id: str, appointment_id: str) -> dict:
+    return _request("GET", f"/users/{user_id}/appointments/{appointment_id}")
+
+
+def list_appointments(user_id: str) -> List[dict]:
+    return _request("GET", f"/users/{user_id}/appointments")
+
+
+def update_appointment(user_id: str, appointment_id: str, payload: Dict[str, Any]) -> dict:
+    return _request("PATCH", f"/users/{user_id}/appointments/{appointment_id}", json=payload)
+
+
+def get_document(user_id: str, document_id: str) -> dict:
+    for document in _request("GET", f"/users/{user_id}/documents"):
+        if document.get("id") == document_id:
+            return document
+    raise MemoryAgentError(f"document {document_id} not found", status_code=404)
+
+
 def create_case(user_id: str, payload: Dict[str, Any]) -> dict:
     return _request("POST", f"/users/{user_id}/cases", json=payload)
 

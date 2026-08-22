@@ -1,8 +1,8 @@
 """Seeds the demo user's Life Graph: a profile, a trusted-circle contact,
-an enrolled medication (via the pharmacy's own dispensing record -- tier 2
-in the trust hierarchy, no separate human-verification step needed for
-this path), a tokenized payment method, and a reference letter (embedded
-into Cloud SQL/pgvector so prove_document_qa.py has something real to
+an enrolled medication and a utility bill (both via the provider's own
+tier-2 records -- no separate human-verification step needed for either
+path), a tokenized payment method, and a reference letter (embedded into
+Cloud SQL/pgvector so prove_document_qa.py has something real to
 retrieve). Run once against a real backend (needs GCP_PROJECT_ID and
 CLOUD_SQL_INSTANCE_CONNECTION_NAME configured) before recording the demo.
 """
@@ -59,7 +59,14 @@ def main() -> None:
     )
     print(f"  payment enrolled: card ending in {payment['card_last4']}")
 
-    call(
+    bill = call(
+        "POST",
+        f"{ACTION_URL}/enrollment/bills/import-from-statement",
+        {"user_id": DEMO_USER_ID, "provider": "EKEDC", "account_ref": "ACC-EKEDC-1"},
+    )
+    print(f"  bill enrolled: {bill['provider']} {bill['category']} (id={bill['id']})")
+
+    document = call(
         "POST",
         f"{MEMORY_URL}/users/{DEMO_USER_ID}/documents",
         {
@@ -74,6 +81,14 @@ def main() -> None:
         },
     )
     print("  reference document enrolled: cardiology appointment letter (embedded via Cloud SQL/pgvector)")
+
+    appointment = call(
+        "POST",
+        f"{ACTION_URL}/enrollment/appointments/import-from-document",
+        {"user_id": DEMO_USER_ID, "document_id": document["id"]},
+    )
+    extracted = appointment["extracted"]
+    print(f"  appointment enrolled: {extracted['provider']}, {extracted['scheduled_for']} (from the letter, via Gemini)")
 
     print(f"\nDone. Life Graph: {MEMORY_URL}/users/{DEMO_USER_ID}/life-graph")
 

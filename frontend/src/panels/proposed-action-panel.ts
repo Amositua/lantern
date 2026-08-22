@@ -1,5 +1,72 @@
-import { ConfirmOptions, ReorderProposal, ReorderResult, confirmReorder, describeFailure } from "../api";
+import {
+  ActionResult,
+  AppointmentProposal,
+  AppointmentResult,
+  BillProposal,
+  BillResult,
+  ConfirmOptions,
+  Proposal,
+  ReorderProposal,
+  ReorderResult,
+  confirmAppointmentAction,
+  confirmBillPayment,
+  confirmReorder,
+  describeFailure,
+} from "../api";
 import { el } from "../dom";
+
+interface ActionKind {
+  confirmVerb: string; // "Reorder", "Pay bill"
+  confirmingVerb: string; // "Reordering…", "Paying…"
+  confirm: (userId: string, caseId: string, confirmed: boolean, options: ConfirmOptions) => Promise<ActionResult>;
+  resultLabel: (status: string) => string;
+}
+
+const REORDER_KIND: ActionKind = {
+  confirmVerb: "Reorder",
+  confirmingVerb: "Reordering…",
+  confirm: (userId, caseId, confirmed, options) =>
+    confirmReorder(userId, caseId, confirmed, options) as Promise<ReorderResult>,
+  resultLabel: (status) =>
+    ({
+      executed: "Reordered",
+      declined: "Declined",
+      aborted_duplicate: "Already reordered",
+      requires_step_up: "Needs a one-time code",
+      requires_trusted_circle: "Needs trusted-circle approval",
+    })[status] ?? status,
+};
+
+const BILL_KIND: ActionKind = {
+  confirmVerb: "Pay bill",
+  confirmingVerb: "Paying…",
+  confirm: (userId, caseId, confirmed, options) =>
+    confirmBillPayment(userId, caseId, confirmed, options) as Promise<BillResult>,
+  resultLabel: (status) =>
+    ({
+      executed: "Paid",
+      declined: "Declined",
+      aborted_already_paid: "Already paid",
+      requires_step_up: "Needs a one-time code",
+      requires_trusted_circle: "Needs trusted-circle approval",
+    })[status] ?? status,
+};
+
+const APPOINTMENT_VERBS: Record<AppointmentProposal["intent"], string> = {
+  confirm_attendance: "Confirm",
+  reschedule: "Reschedule",
+  cancel: "Cancel",
+};
+
+function appointmentKind(intent: AppointmentProposal["intent"]): ActionKind {
+  return {
+    confirmVerb: APPOINTMENT_VERBS[intent],
+    confirmingVerb: "Sending…",
+    confirm: (userId, caseId, confirmed) =>
+      confirmAppointmentAction(userId, caseId, confirmed) as Promise<AppointmentResult>,
+    resultLabel: (status) => ({ executed: "Done", declined: "Left as is" })[status] ?? status,
+  };
+}
 
 export class ProposedActionPanel {
   constructor(
@@ -12,11 +79,26 @@ export class ProposedActionPanel {
 
   renderIdle(): void {
     this.container.replaceChildren(
-      el("p", { className: "empty-state", text: 'Nothing proposed right now. Choose "Reorder" next to a medication to start one.' }),
+      el("p", {
+        className: "empty-state",
+        text: 'Nothing proposed right now. Choose "Reorder" next to a medication, or "Pay" next to a bill, to start one.',
+      }),
     );
   }
 
-  showProposal(proposal: ReorderProposal): void {
+  showReorderProposal(proposal: ReorderProposal): void {
+    this.showProposal(proposal, REORDER_KIND);
+  }
+
+  showBillProposal(proposal: BillProposal): void {
+    this.showProposal(proposal, BILL_KIND);
+  }
+
+  showAppointmentProposal(proposal: AppointmentProposal): void {
+    this.showProposal(proposal, appointmentKind(proposal.intent));
+  }
+
+  private showProposal(proposal: Proposal, kind: ActionKind): void {
     this.container.replaceChildren();
 
     this.container.appendChild(el("p", { className: "proposal-readback", text: proposal.read_back }));
@@ -24,7 +106,7 @@ export class ProposedActionPanel {
 
     const form = document.createElement("form");
     form.className = "proposal-actions";
-    form.setAttribute("aria-label", "Confirm or decline this reorder");
+    form.setAttribute("aria-label", `Confirm or decline this ${kind.confirmVerb.toLowerCase()}`);
 
     let stepUpInput: HTMLInputElement | null = null;
     let approverInput: HTMLInputElement | null = null;
@@ -51,7 +133,7 @@ export class ProposedActionPanel {
       form.appendChild(label);
     }
 
-    const confirmButton = el("button", { className: "primary-button", text: "Reorder" });
+    const confirmButton = el("button", { className: "primary-button", text: kind.confirmVerb });
     confirmButton.type = "submit";
 
     const declineButton = el("button", { className: "secondary-button", text: "Not now" });
@@ -66,16 +148,17 @@ export class ProposedActionPanel {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       const options: ConfirmOptions = { confirmedBy: approverInput?.value, stepUpToken: stepUpInput?.value };
-      void this.submit(proposal, true, options, statusLine, confirmButton, declineButton);
+      void this.submit(proposal, kind, true, options, statusLine, confirmButton, declineButton);
     });
 
     declineButton.addEventListener("click", () => {
-      void this.submit(proposal, false, {}, statusLine, confirmButton, declineButton);
+      void this.submit(proposal, kind, false, {}, statusLine, confirmButton, declineButton);
     });
   }
 
   private async submit(
-    proposal: ReorderProposal,
+    proposal: Proposal,
+    kind: ActionKind,
     confirmed: boolean,
     options: ConfirmOptions,
     statusLine: HTMLParagraphElement,
@@ -84,35 +167,35 @@ export class ProposedActionPanel {
   ): Promise<void> {
     confirmButton.disabled = true;
     declineButton.disabled = true;
-    if (confirmed) confirmButton.textContent = "Reordering…";
+    if (confirmed) confirmButton.textContent = kind.confirmingVerb;
     statusLine.textContent = "";
 
     try {
-      const result = await confirmReorder(this.userId, proposal.case_id, confirmed, options);
-      this.showResult(result, proposal);
+      const result = await kind.confirm(this.userId, proposal.case_id, confirmed, options);
+      this.showResult(result, proposal, kind);
     } catch (error) {
       statusLine.textContent = describeFailure(
-        "confirm reorder failed",
+        "confirm action failed",
         error,
         "Lantern couldn't send that just now. Try again in a moment.",
       );
       confirmButton.disabled = false;
       declineButton.disabled = false;
-      confirmButton.textContent = "Reorder";
+      confirmButton.textContent = kind.confirmVerb;
     } finally {
       this.onSettled();
     }
   }
 
-  private showResult(result: ReorderResult, proposal: ReorderProposal): void {
+  private showResult(result: ActionResult, proposal: Proposal, kind: ActionKind): void {
     this.container.replaceChildren();
-    this.container.appendChild(el("p", { className: `proposal-result proposal-result-${resultTone(result.status)}`, text: resultLabel(result.status) }));
+    this.container.appendChild(el("p", { className: `proposal-result proposal-result-${resultTone(result.status)}`, text: kind.resultLabel(result.status) }));
     this.container.appendChild(el("p", { className: "proposal-detail", text: result.message }));
 
     if (result.status === "requires_step_up" || result.status === "requires_trusted_circle") {
       const retryButton = el("button", { className: "secondary-button", text: "Try again" });
       retryButton.type = "button";
-      retryButton.addEventListener("click", () => this.showProposal(proposal));
+      retryButton.addEventListener("click", () => this.showProposal(proposal, kind));
       this.container.appendChild(retryButton);
     } else {
       const doneButton = el("button", { className: "secondary-button", text: "Done" });
@@ -123,7 +206,7 @@ export class ProposedActionPanel {
   }
 }
 
-function confirmationLevelNote(level: ReorderProposal["required_confirmation"]): string {
+function confirmationLevelNote(level: Proposal["required_confirmation"]): string {
   switch (level) {
     case "simple":
       return "A quick yes will confirm this.";
@@ -134,22 +217,7 @@ function confirmationLevelNote(level: ReorderProposal["required_confirmation"]):
   }
 }
 
-function resultLabel(status: ReorderResult["status"]): string {
-  switch (status) {
-    case "executed":
-      return "Reordered";
-    case "declined":
-      return "Declined";
-    case "aborted_duplicate":
-      return "Already reordered";
-    case "requires_step_up":
-      return "Needs a one-time code";
-    case "requires_trusted_circle":
-      return "Needs trusted-circle approval";
-  }
-}
-
-function resultTone(status: ReorderResult["status"]): "good" | "warn" | "neutral" {
+function resultTone(status: string): "good" | "warn" | "neutral" {
   if (status === "executed") return "good";
   if (status === "requires_step_up" || status === "requires_trusted_circle") return "warn";
   return "neutral";

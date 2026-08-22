@@ -1,4 +1,4 @@
-import { LifeGraphSummary, Medication, Person, describeFailure, fetchLifeGraph } from "../api";
+import { Appointment, Bill, LifeGraphSummary, Medication, Person, describeFailure, fetchLifeGraph } from "../api";
 import { el } from "../dom";
 
 export class LifeGraphPanel {
@@ -6,6 +6,8 @@ export class LifeGraphPanel {
     private container: HTMLElement,
     private userId: string,
     private onRequestReorder: (medication: Medication) => void,
+    private onRequestBillPay: (bill: Bill) => void,
+    private onRequestAppointmentConfirm: (appointment: Appointment) => void,
   ) {}
 
   async refresh(): Promise<void> {
@@ -30,6 +32,8 @@ export class LifeGraphPanel {
     }
 
     this.container.appendChild(this.renderMedications(data.medications));
+    this.container.appendChild(this.renderBills(data.bills));
+    this.container.appendChild(this.renderAppointments(data.appointments));
     this.container.appendChild(this.renderPeople(data.people));
     this.container.appendChild(this.renderPayment(data.payment));
   }
@@ -55,6 +59,65 @@ export class LifeGraphPanel {
         const button = el("button", { className: "reorder-button", text: "Reorder" });
         button.type = "button";
         button.addEventListener("click", () => this.onRequestReorder(med));
+        item.appendChild(button);
+      }
+
+      list.appendChild(item);
+    }
+    section.appendChild(list);
+    return section;
+  }
+
+  private renderBills(bills: Bill[]): HTMLElement {
+    const section = el("div", { className: "life-graph-section" });
+    section.appendChild(el("h3", { text: "Bills" }));
+
+    if (bills.length === 0) {
+      section.appendChild(el("p", { className: "empty-state", text: "None on file yet." }));
+      return section;
+    }
+
+    const list = el("ul", { className: "medication-list" });
+    for (const bill of bills) {
+      const item = el("li", { className: "medication-item" });
+      const label = `${bill.provider}, ${bill.category} — account ${bill.account_ref}`;
+      item.appendChild(
+        el("span", { className: "medication-label", text: bill.discontinued ? `${label} (discontinued)` : label }),
+      );
+
+      if (!bill.discontinued) {
+        const button = el("button", { className: "reorder-button", text: "Pay" });
+        button.type = "button";
+        button.addEventListener("click", () => this.onRequestBillPay(bill));
+        item.appendChild(button);
+      }
+
+      list.appendChild(item);
+    }
+    section.appendChild(list);
+    return section;
+  }
+
+  private renderAppointments(appointments: Appointment[]): HTMLElement {
+    const section = el("div", { className: "life-graph-section" });
+    section.appendChild(el("h3", { text: "Appointments" }));
+
+    if (appointments.length === 0) {
+      section.appendChild(el("p", { className: "empty-state", text: "None on file yet." }));
+      return section;
+    }
+
+    const list = el("ul", { className: "medication-list" });
+    for (const appointment of appointments) {
+      const item = el("li", { className: "medication-item" });
+      const when = appointment.scheduled_for ? `, ${appointment.scheduled_for}` : "";
+      const label = `${appointment.provider}${when} — ${appointment.status}`;
+      item.appendChild(el("span", { className: "medication-label", text: label }));
+
+      if (!appointment.cancelled && appointment.status === "scheduled") {
+        const button = el("button", { className: "reorder-button", text: "Confirm" });
+        button.type = "button";
+        button.addEventListener("click", () => this.onRequestAppointmentConfirm(appointment));
         item.appendChild(button);
       }
 

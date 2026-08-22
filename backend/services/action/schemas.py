@@ -73,6 +73,33 @@ class PaymentEnrollRequest(BaseModel):
     never_auto_categories: List[str] = Field(default_factory=list)
 
 
+class AppointmentExtraction(BaseModel):
+    provider: Optional[str] = None
+    purpose: Optional[str] = None
+    scheduled_for: Optional[str] = None
+    location: Optional[str] = None
+
+
+class AppointmentImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: str
+    document_id: str
+
+
+class AppointmentImportResponse(BaseModel):
+    appointment_id: str
+    extracted: AppointmentExtraction
+
+
+class BillImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: str
+    provider: str
+    account_ref: str
+
+
 class DocumentImportRequest(BaseModel):
     # letters/labels -- reference material, not a Life Graph identity fact,
     # so unlike the medication paths above this needs no verification block
